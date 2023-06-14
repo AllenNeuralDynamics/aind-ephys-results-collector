@@ -67,6 +67,18 @@ if __name__ == "__main__":
     for preprocessed_file in preprocessed_json_files:
         shutil.copy(preprocessed_file, results_folder / "preprocessed" / preprocessed_file.name)
 
+    # Make visualization_output
+    visualization_output = {}
+    visualization_json_files = [p for p in visualization_folder.iterdir() if p.name.endswith(".json")]
+    for visualization_json_file in visualization_json_files:
+        recording_name = visualization_json_file.name[:visualization_json_file.name.find(".json")]
+        with open(visualization_json_file, "r") as f:
+            visualization_dict = json.load(f)
+        visualization_output[recording_name] = visualization_dict
+    with open(results_folder / "visualization_output.json", "w") as f:
+        json.dump(visualization_output, f, indent=4)
+
+
     # Collect and aggregate data processes
     ephys_data_processes = []
     for data_processes_folder in data_processes_folders:
@@ -97,7 +109,6 @@ if __name__ == "__main__":
         f.write(processing.json(indent=3))
 
     # Propagate other metadata
-    # propagate existing metadata files to results
     metadata_json_files = [p for p in session.iterdir() if p.suffix == ".json" and "processing" not in p.name]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
