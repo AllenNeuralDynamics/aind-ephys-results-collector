@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta
 
 # AIND
-from aind_data_schema import Processing
+from aind_data_schema import Processing, DataDescription, DerivedDataDescription
 from aind_data_schema.processing import DataProcess
 
 
@@ -108,8 +108,54 @@ if __name__ == "__main__":
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
 
+    if (session / "data_description.json").is_file():
+        with open(session / "data_description.json", "r") as data_description_file:
+            data_description_json = json.load(data_description_file)
+        # Allow for parsing earlier versions of Processing files
+        data_description = DataDescription.construct(**data_description_json)
+    else:
+        data_description = None
+
+    # construct data_description.json
+    if data_description is None:
+        from aind_data_schema.data_description import Institution, Funding, Modality, ExperimentType
+        print(f"Making Data Description from scratch")
+
+        # make from scratch:
+        data_description_dict = {}
+        now = datetime.now()
+        data_description_dict["creation_time"] = now.time()
+        data_description_dict["creation_date"] = now.date()
+        data_description_dict["input_data_name"] = session_name
+        data_description_dict["institution"] = Institution.AIND
+        data_description_dict["investigators"] = []
+        data_description_dict["funding_source"] = [Funding(funder="AIND")]
+        data_description_dict["modality"] = [Modality.ECEPHYS]
+        data_description_dict["experiment_type"] = ExperimentType.ECEPHYS
+        data_description_dict["subject_id"] = session_name.split("_")[1]
+    else:
+        from aind_data_schema.data_description import Institution
+        
+        print(f"Using existing Data Description")
+        data_description_dict = data_description.to_dict()
+        skip_keys = ["version", "data_level", "described_by", "ror_id"]
+        for key in skip_keys:
+            if key in data_description_dict:
+                del data_description_dict[key]
+        data_description_dict["institution"] = Institution.AIND
+        now = datetime.now()
+        data_description_dict["creation_time"] = now.time()
+        data_description_dict["creation_date"] = now.date()
+        data_description_dict["input_data_name"] = data_description_dict["name"]
+
+    derived_data_description = DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
+
+    # save processing files to output
+    with (results_folder / "data_description.json").open("w") as f:
+        f.write(derived_data_description.json(indent=3))
+
     # Propagate other metadata
-    metadata_json_files = [p for p in session.iterdir() if p.suffix == ".json" and "processing" not in p.name]
+    metadata_json_files = [p for p in session.iterdir() if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
 
