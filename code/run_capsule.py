@@ -29,27 +29,27 @@ if __name__ == "__main__":
     t_collection_start = time.perf_counter()
 
     # check if test
-    if (data_folder / "postprocessing_output_test").is_dir():
+    if (data_folder / "postprocessing_pipeline_output_test").is_dir():
         print("\n*******************\n**** TEST MODE ****\n*******************\n")
-        test_folders = ["preprocessing_output_test", "spikesorting_output_test", "postprocessing_output_test",
-                        "curation_output_test", "visualization_output_test"]
-        postprocessed_folder = data_folder / "postprocessing_output_test" / "postprocessed"
-        preprocessed_folder = data_folder / "preprocessing_output_test" / "preprocessed"
-        spikesorted_folder = data_folder / "spikesorting_output_test" / "spikesorted"
-        curated_folder = data_folder / "curation_output_test" / "sorting_precurated"
-        visualization_folder = data_folder / "visualization_output_test" / "visualization_output"
+        postprocessed_folder = data_folder / "postprocessing_pipeline_output_test"
+        preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
+        spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
+        curated_folder = data_folder / "curation_pipeline_output_test" 
+        visualization_folder = data_folder / "visualization_pipeline_output_test"
 
-        data_processes_folders = []
+        test_folders = [preprocessed_folder, spikesorted_folder, postprocessed_folder, curated_folder, visualization_folder]
+
+        data_processes_files = []
         for test_folder_name in test_folders:
             test_folder = data_folder / test_folder_name
-            data_processes_folders.extend([p for p in test_folder.iterdir() if "data_processes" in p.name and p.is_dir()]) 
+            data_processes_files.extend([p for p in test_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]) 
     else:
-        postprocessed_folder = data_folder / "postprocessed"
-        preprocessed_folder = data_folder / "preprocessed"
-        spikesorted_folder = data_folder / "spikesorted"
-        curated_folder = data_folder / "sorting_precurated"
-        visualization_folder = data_folder / "visualization_output"
-        data_processes_folders = [p for p in data_folder.iterdir() if "data_processes" in p.name and p.is_dir()]
+        postprocessed_folder = data_folder
+        preprocessed_folder = data_folder
+        spikesorted_folder = data_folder
+        curated_folder = data_folder
+        visualization_folder = data_folder 
+        data_processes_files = [p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]
 
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
@@ -57,21 +57,37 @@ if __name__ == "__main__":
     session_name = session.name
 
     # Move spikesorted / postprocessing / curated
-    shutil.copytree(spikesorted_folder, results_folder / "spikesorted")
-    shutil.copytree(postprocessed_folder, results_folder / "postprocessed")
-    shutil.copytree(curated_folder, results_folder / "sorting_precurated")
+    spikesorted_results_folder = (results_folder / "spikesorted")
+    spikesorted_results_folder.mkdir(exist_ok=True)
+    postprocessed_results_folder = (results_folder / "postprocessed")
+    postprocessed_results_folder.mkdir(exist_ok=True)
+    curated_results_folder = (results_folder / "curated")
+    curated_results_folder.mkdir(exist_ok=True)
+
+    spikesorted_folders = [p for p in spikesorted_folder.iterdir() if "spikesorted_" in p.name and p.is_dir()]
+    for f in spikesorted_folders:
+        shutil.copytree(f, spikesorted_results_folder / f.name[len("spikesorted_"):])
+    postprocessed_folders = [p for p in postprocessed_folder.iterdir() if "postprocessed" in p.name and p.is_dir() and "-sorting" not in p.name]
+    for f in postprocessed_folders:
+        shutil.copytree(f, postprocessed_results_folder / f.name[len("postprocessed_"):])
+    postprocessed_sorting_folders = [p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()]
+    for f in postprocessed_sorting_folders:
+        shutil.copytree(f, postprocessed_results_folder / f.name)
+    curated_folders = [p for p in curated_folder.iterdir() if "curated_" in p.name and p.is_dir()]
+    for f in curated_folders:
+        shutil.copytree(f, curated_results_folder / f.name[len("curated_"):])
 
     # Copy JSON preprocessed files
-    preprocessed_json_files = [p for p in preprocessed_folder.iterdir() if p.suffix == ".json"]
+    preprocessed_json_files = [p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")]
     (results_folder / "preprocessed").mkdir(exist_ok=True)
     for preprocessed_file in preprocessed_json_files:
-        shutil.copy(preprocessed_file, results_folder / "preprocessed" / preprocessed_file.name)
+        shutil.copy(preprocessed_file, results_folder / "preprocessed" / preprocessed_file.name[len("preprocessed_"):])
 
     # Make visualization_output
     visualization_output = {}
-    visualization_json_files = [p for p in visualization_folder.iterdir() if p.name.endswith(".json")]
+    visualization_json_files = [p for p in visualization_folder.iterdir() if "visualization_" in p.name and p.name.endswith(".json") and "data_process" not in p.name]
     for visualization_json_file in visualization_json_files:
-        recording_name = visualization_json_file.name[:visualization_json_file.name.find(".json")]
+        recording_name = visualization_json_file.name[len("visualization_"):len(visualization_json_file.name) - 5]
         with open(visualization_json_file, "r") as f:
             visualization_dict = json.load(f)
         visualization_output[recording_name] = visualization_dict
@@ -81,11 +97,9 @@ if __name__ == "__main__":
 
     # Collect and aggregate data processes
     ephys_data_processes = []
-    for data_processes_folder in data_processes_folders:
-        json_files = [p for p in data_processes_folder.iterdir() if p.suffix == ".json"]
-        for json_file in json_files:
-            data_process = DataProcess.parse_file(json_file)
-            ephys_data_processes.append(data_process)
+    for json_file in data_processes_files:
+        data_process = DataProcess.parse_file(json_file)
+        ephys_data_processes.append(data_process)
 
     # Make Processing
     ephys_processing = Processing(
@@ -119,7 +133,7 @@ if __name__ == "__main__":
     # construct data_description.json
     if data_description is None:
         from aind_data_schema.data_description import Institution, Funding, Modality, ExperimentType
-        print(f"Making Data Description from scratch")
+        print("Constructing derived data description from scratch")
 
         # make from scratch:
         data_description_dict = {}
@@ -135,10 +149,9 @@ if __name__ == "__main__":
         data_description_dict["subject_id"] = session_name.split("_")[1]
     else:
         from aind_data_schema.data_description import Institution
-        
-        print(f"Using existing Data Description")
-        data_description_dict = data_description.to_dict()
-        skip_keys = ["version", "data_level", "described_by", "ror_id"]
+        print("Constructing derived data description from existing data description")
+        data_description_dict = data_description.dict()
+        skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id"]
         for key in skip_keys:
             if key in data_description_dict:
                 del data_description_dict[key]
