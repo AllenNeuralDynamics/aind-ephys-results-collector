@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 # AIND
 from aind_data_schema import Processing, DataDescription, DerivedDataDescription
 from aind_data_schema.processing import DataProcess
+from aind_data_schema.data_description import Institution, Funding, Modality, ExperimentType
 
 
 PIPELINE_URL = "TBD"
@@ -130,36 +131,30 @@ if __name__ == "__main__":
     else:
         data_description = None
 
-    # construct data_description.json
-    if data_description is None:
-        from aind_data_schema.data_description import Institution, Funding, Modality, ExperimentType
-        print("Constructing derived data description from scratch")
+    now = datetime.now()
+    # make from scratch:
+    data_description_dict = {}
+    data_description_dict["creation_time"] = now.time()
+    data_description_dict["creation_date"] = now.date()
+    data_description_dict["input_data_name"] = session_name
+    data_description_dict["institution"] = Institution.AIND
+    data_description_dict["investigators"] = []
+    data_description_dict["funding_source"] = [Funding(funder="AIND")]
+    data_description_dict["modality"] = [Modality.ECEPHYS]
+    data_description_dict["experiment_type"] = ExperimentType.ECEPHYS
+    data_description_dict["subject_id"] = session_name.split("_")[1]
 
-        # make from scratch:
-        data_description_dict = {}
-        now = datetime.now()
-        data_description_dict["creation_time"] = now.time()
-        data_description_dict["creation_date"] = now.date()
-        data_description_dict["input_data_name"] = session_name
-        data_description_dict["institution"] = Institution.AIND
-        data_description_dict["investigators"] = []
-        data_description_dict["funding_source"] = [Funding(funder="AIND")]
-        data_description_dict["modality"] = [Modality.ECEPHYS]
-        data_description_dict["experiment_type"] = ExperimentType.ECEPHYS
-        data_description_dict["subject_id"] = session_name.split("_")[1]
-    else:
-        from aind_data_schema.data_description import Institution
+    # construct data_description.json
+    if data_description is not None:
         print("Constructing derived data description from existing data description")
-        data_description_dict = data_description.dict()
-        skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id"]
+        existing_data_description_dict = data_description.dict()
+        skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id",
+                     "creation_time", "creation_date", "institution"]
         for key in skip_keys:
-            if key in data_description_dict:
-                del data_description_dict[key]
-        data_description_dict["institution"] = Institution.AIND
-        now = datetime.now()
-        data_description_dict["creation_time"] = now.time()
-        data_description_dict["creation_date"] = now.date()
-        data_description_dict["input_data_name"] = data_description_dict["name"]
+            if key in existing_data_description_dict:
+                del existing_data_description_dict[key]
+        data_description_dict.update(existing_data_description_dict)
+        data_description_dict["input_data_name"] = existing_data_description_dict["name"]
 
     derived_data_description = DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
 
