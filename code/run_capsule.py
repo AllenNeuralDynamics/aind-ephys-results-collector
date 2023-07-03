@@ -132,6 +132,16 @@ if __name__ == "__main__":
         data_description = None
 
     now = datetime.now()
+
+    if (session / "subject.json").is_file():
+        with open(session / "subject.json", "r") as subject_file:
+            subject_info = json.load(subject_file)
+        subject_id = subject_info["subject_id"]
+    elif len(session_name.split("_")) > 1:
+        subject_id = session_name.split("_")[1]
+    else:
+        subject_id = "000000" # unknown
+
     # make from scratch:
     data_description_dict = {}
     data_description_dict["creation_time"] = now.time()
@@ -142,7 +152,7 @@ if __name__ == "__main__":
     data_description_dict["funding_source"] = [Funding(funder="AIND")]
     data_description_dict["modality"] = [Modality.ECEPHYS]
     data_description_dict["experiment_type"] = ExperimentType.ECEPHYS
-    data_description_dict["subject_id"] = session_name.split("_")[1]
+    data_description_dict["subject_id"] = subject_id
 
     # construct data_description.json
     if data_description is not None:
