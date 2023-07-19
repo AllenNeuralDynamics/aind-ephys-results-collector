@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 # AIND
 import aind_data_schema.data_description as dd
 from aind_data_schema.processing import DataProcess, Processing
+from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 
 
 PIPELINE_URL = "TBD"
@@ -139,39 +140,28 @@ if __name__ == "__main__":
     else:
         subject_id = "000000" # unknown
 
-    now = datetime.now()
-    # make from scratch:
-    data_description_dict = {}
-    data_description_dict["creation_time"] = now.time()
-    data_description_dict["creation_date"] = now.date()
-    data_description_dict["input_data_name"] = session_name
-    data_description_dict["institution"] = dd.Institution.AIND
-    data_description_dict["investigators"] = []
-    data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
-    data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-    data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
-    data_description_dict["subject_id"] = subject_id
-
-    # construct data_description.json
+    process_name = "Spike Sorting"
     if data_description is not None:
-        print("Constructing derived data description from existing data description")
-        existing_data_description_dict = data_description.dict()
-        existing_version = existing_data_description_dict.get("schema_version")
-        if existing_version is not None and parse(existing_version) < parse("0.4.0"):
-            print(f"Fixing fields for schema version {existing_version}")
-            existing_data_description_dict["institution"] = dd.Institution(existing_data_description_dict["institution"])
-            existing_data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        else:
-            existing_data_description_dict["institution"] = dd.Institution(existing_data_description_dict["institution"]["abbreviation"])
-        skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id",
-                     "creation_time", "creation_date"]
-        for key in skip_keys:
-            if key in existing_data_description_dict:
-                del existing_data_description_dict[key]
-        data_description_dict.update(existing_data_description_dict)
-        data_description_dict["input_data_name"] = existing_data_description_dict["name"]
+        upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
+        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
+        derived_data_description = dd.DerivedDataDescription.from_data_description(
+            upgraded_data_description, process_name=process_name
+        )
+    else:
+        now = datetime.now()
+        # make from scratch:
+        data_description_dict = {}
+        data_description_dict["creation_time"] = now.time()
+        data_description_dict["creation_date"] = now.date()
+        data_description_dict["input_data_name"] = session_name
+        data_description_dict["institution"] = dd.Institution.AIND
+        data_description_dict["investigators"] = []
+        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
+        data_description_dict["modality"] = [dd.Modality.ECEPHYS]
+        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+        data_description_dict["subject_id"] = subject_id
 
-    derived_data_description = dd.DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
+        derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
