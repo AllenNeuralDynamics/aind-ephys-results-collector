@@ -140,7 +140,7 @@ if __name__ == "__main__":
     else:
         subject_id = "000000" # unknown
 
-    process_name = "Spike Sorting"
+    process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
         upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
