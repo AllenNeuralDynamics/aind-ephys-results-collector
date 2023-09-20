@@ -6,9 +6,8 @@ from pathlib import Path
 import numpy as np
 import shutil
 import json
-import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # AIND
 import aind_data_schema.data_description as dd
