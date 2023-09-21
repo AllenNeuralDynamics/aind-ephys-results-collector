@@ -1,5 +1,5 @@
 # Collect results for AIND ephys pipeline
-## aind-capsule-ephys-results-collector
+## aind-ephys-results-collector
 
 
 ### Description
@@ -11,11 +11,11 @@ This simple capsule is designed to collect the results for the AIND pipeline.
 
 The `data/` folder can include several outputs from upstream capsules, including:
 
-- outputs of the [aind-capsule-ephys-preprocessing](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-preprocessing) capsule
-- outputs of the spike sorting capsule (either with [aind-capsule-ephys-spikesort-pykilosort](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-pykilosort) or [aind-capsule-ephys-spikesort-kilosort25](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25))
-- outputs of the [aind-capsule-ephys-postprocessing](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-postprocessing) capsule
-- outputs of the [aind-capsule-ephys-curation](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-curation) capsule
-- outputs of the [aind-capsule-ephys-visualization](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-visualization) capsule
+- outputs of the [aind-ephys-preprocessing](https://github.com/AllenNeuralDynamics/aind-ephys-preprocessing) capsule
+- outputs of the spike sorting capsule (either with [aind-ephys-spikesort-pykilosort](https://github.com/AllenNeuralDynamics/aind-ephys-spikesort-pykilosort) or [aind-ephys-spikesort-kilosort25](https://github.com/AllenNeuralDynamics/aind-ephys-spikesort-kilosort25))
+- outputs of the [aind-ephys-postprocessing](https://github.com/AllenNeuralDynamics/aind-ephys-postprocessing) capsule
+- outputs of the [aind-ephys-curation](https://github.com/AllenNeuralDynamics/aind-ephys-curation) capsule
+- outputs of the [aind-ephys-visualization](https://github.com/AllenNeuralDynamics/aind-ephys-visualization) capsule
 
 In addition, the original session data (e.g., "ecephys_664438_2023-04-12_14-59-51") must also be available in the `data/` folder.
 
