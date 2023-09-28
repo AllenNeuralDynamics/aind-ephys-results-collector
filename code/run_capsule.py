@@ -126,7 +126,7 @@ if __name__ == "__main__":
         with open(session / "data_description.json", "r") as data_description_file:
             data_description_json = json.load(data_description_file)
         # Allow for parsing earlier versions of Processing files
-        data_description = DataDescription.construct(**data_description_json)
+        data_description = dd.DataDescription.construct(**data_description_json)
     else:
         data_description = None
 
