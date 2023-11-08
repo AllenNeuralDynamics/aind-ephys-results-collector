@@ -8,5 +8,4 @@ ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.13.66 \
-    numpy==1.24.3
+    aind-data-schema==0.15.25
