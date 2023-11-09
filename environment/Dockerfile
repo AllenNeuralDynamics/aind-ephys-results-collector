@@ -1,5 +1,5 @@
-# hash:sha256:2cd9649fc74dad892daa2a4972e78733be3238220c40a2d4c61fd6856d82bc1f
-FROM registry.codeocean.allenneuraldynamics.org/codeocean/jupyterlab:3.0.9-miniconda4.9.2-python3.8-ubuntu20.04
+# hash:sha256:aebcca260d9dc117093f0be5e882daeaeda04186689e8db70f6a0f17f010294e
+FROM registry.codeocean.allenneuraldynamics.org/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
