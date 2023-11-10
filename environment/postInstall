@@ -4,6 +4,6 @@ set -e
 # Use ProcessingUpgrade
 git clone https://github.com/AllenNeuralDynamics/aind-data-schema.git
 cd aind-data-schema
-git checkout 2565cb5097c87ff2e66db3ae38ddb946ff1cab89
+git checkout 41f3e7aa2d1158f032b1025cae3266d32fd090fb
 pip install --no-cache-dir .
 cd ..
