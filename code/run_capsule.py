@@ -11,11 +11,13 @@ from datetime import datetime
 
 # AIND
 import aind_data_schema.data_description as dd
-from aind_data_schema.processing import DataProcess, Processing
+from aind_data_schema.processing import DataProcess, Processing, PipelineProcess
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
+from aind_data_schema.schema_upgrade.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
 
-PIPELINE_URL = "TBD"
+PIPELINE_MAINAINER = "Alessio Buccino"
+PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline-pykilosort"
 PIPELINE_VERSION = "0.0.1"
 
 
@@ -95,33 +97,35 @@ if __name__ == "__main__":
         json.dump(visualization_output, f, indent=4)
 
 
-    # Collect and aggregate data processes
+    # Collect and aggregate data processes and make Processing model
     ephys_data_processes = []
     for json_file in data_processes_files:
-        data_process = DataProcess.parse_file(json_file)
+        with open(json_file, "r") as data_process_file:
+            data_process_dict = json.load(data_process_file)
+        data_process_old = DataProcess.construct(**data_process_dict)
+        data_process = DataProcessUpgrade(data_process_old).upgrade()
         ephys_data_processes.append(data_process)
 
-    # Make Processing
-    ephys_processing = Processing(
-            pipeline_url=PIPELINE_URL,
-            pipeline_version=PIPELINE_VERSION,
-            data_processes=ephys_data_processes
-        )
     if (session / "processing.json").is_file():
         with open(session / "processing.json", "r") as processing_file:
-            processing_json = json.load(processing_file)
+            processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
-        processing = Processing.construct(**processing_json)
+        processing_old = Processing.construct(**processing_dict)
+        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
+        processing.processing_pipeline.data_processes.append(ephys_data_processes)
     else:
-        processing = None
+        processing_pipeline = PipelineProcess(
+            data_processes=ephys_data_processes,
+            processor_full_name=PIPELINE_MAINAINER,
+            pipeline_url=PIPELINE_URL,
+            pipeline_version=PIPELINE_VERSION
+        )
+        processing = Processing(processing_pipeline=processing_pipeline)
 
-    if processing is None:
-        processing = ephys_processing
-    else:
-        processing.data_processes.append(ephys_data_processes)
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
 
+    # Handle DataDescription model
     if (session / "data_description.json").is_file():
         with open(session / "data_description.json", "r") as data_description_file:
             data_description_json = json.load(data_description_file)
@@ -142,22 +146,20 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
+        upgraded_data_description = upgrader.upgrade(experiment_type=dd.ExperimentType.ECEPHYS)
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
     else:
-        now = datetime.now()
         # make from scratch:
         data_description_dict = {}
-        data_description_dict["creation_time"] = now.time()
-        data_description_dict["creation_date"] = now.date()
+        data_description_dict["creation_time"] = datetime.now()
         data_description_dict["input_data_name"] = session_name
         data_description_dict["institution"] = dd.Institution.AIND
         data_description_dict["investigators"] = []
         data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
         data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+        data_description_dict["platform"] = dd.Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
 
         derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
@@ -166,7 +168,7 @@ if __name__ == "__main__":
     with (results_folder / "data_description.json").open("w") as f:
         f.write(derived_data_description.json(indent=3))
 
-    # Propagate other metadata
+    # Propagate other metadata JSON files
     metadata_json_files = [p for p in session.iterdir() if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
