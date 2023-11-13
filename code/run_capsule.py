@@ -146,7 +146,7 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade(experiment_type=dd.ExperimentType.ECEPHYS)
+        upgraded_data_description = upgrader.upgrade(platform=dd.Platform.ECEPHYS)
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
