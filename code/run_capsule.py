@@ -176,7 +176,13 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS)
+        additional_required_kwargs = dict()
+        # at least one investigator is required
+        if len(data_description.investigators) == 0:
+            additional_required_kwargs.update(dict(investigators=["Unknown"]))
+        upgraded_data_description = upgrader.upgrade(
+            platform=Platform.ECEPHYS, **additional_required_kwargs
+        )
         derived_data_description = DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
@@ -187,7 +193,7 @@ if __name__ == "__main__":
         data_description_dict["name"] = session_name
         data_description_dict["institution"] = Institution.AIND
         data_description_dict["data_level"] = DataLevel.RAW
-        data_description_dict["investigators"] = []
+        data_description_dict["investigators"] = ["Unknown"]
         data_description_dict["funding_source"] = [Funding(funder=Institution.AIND)]
         data_description_dict["modality"] = [Modality.ECEPHYS]
         data_description_dict["platform"] = Platform.ECEPHYS
