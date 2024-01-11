@@ -11,5 +11,5 @@ ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.22.1 \
+    aind-data-schema==0.23.1 \
     numpy==1.24.4
