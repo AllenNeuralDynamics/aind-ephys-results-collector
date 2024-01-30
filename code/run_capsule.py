@@ -180,9 +180,7 @@ if __name__ == "__main__":
         # at least one investigator is required
         if len(data_description.investigators) == 0:
             additional_required_kwargs.update(dict(investigators=["Unknown"]))
-        upgraded_data_description = upgrader.upgrade(
-            platform=Platform.ECEPHYS, **additional_required_kwargs
-        )
+        upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS, **additional_required_kwargs)
         derived_data_description = DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
