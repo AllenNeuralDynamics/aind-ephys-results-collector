@@ -2,13 +2,16 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-
 from pathlib import Path
-import numpy as np
 import shutil
 import json
 import time
 from datetime import datetime
+import numpy as np
+import pandas as pd
+
+# SpikeInterface
+import spikeinterface as si
 
 # AIND
 from aind_data_schema.core.data_description import (
@@ -46,6 +49,7 @@ if __name__ == "__main__":
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
         curated_folder = data_folder / "curation_pipeline_output_test"
+        unit_classifier_folder = data_folder / "unit_classifier_pipeline_output_test"
         visualization_folder = data_folder / "visualization_pipeline_output_test"
 
         test_folders = [
@@ -67,6 +71,7 @@ if __name__ == "__main__":
         preprocessed_folder = data_folder
         spikesorted_folder = data_folder
         curated_folder = data_folder
+        unit_classifier_folder = data_folder
         visualization_folder = data_folder
         data_processes_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
@@ -94,15 +99,32 @@ if __name__ == "__main__":
         if "postprocessed" in p.name and p.is_dir() and "-sorting" not in p.name
     ]
     for f in postprocessed_folders:
-        shutil.copytree(f, postprocessed_results_folder / f.name[len("postprocessed_") :])
+        recording_name = f.name[len("postprocessed_") :]
+        shutil.copytree(f, postprocessed_results_folder / recording_name)
+
+        # TODO: get sorting, add curation and unit_classifier properties and save to curated
+        we = si.load_waveforms(f, with_recording=False)
+        # add defaut_qc property
+        curation_file = curated_folder / f"qc_{recording_name}.npy"
+        if curation_file.is_file():
+            default_qc = np.load(curation_file)
+            we.sorting.set_property("default_qc", default_qc)
+        # add classifier
+        unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
+        if unit_classifier_file.is_file():
+            unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
+            decoder_label = unit_classifier_df["decoder_label"]
+            we.sorting.set_property("decoder_label", decoder_label)
+            decoder_probability = unit_classifier_df["decoder_probability"]
+            we.sorting.set_property("decoder_probability", decoder_probability)
+
+        _ = we.sorting.save(folder=curated_results_folder / recording_name)
+
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
     ]
     for f in postprocessed_sorting_folders:
         shutil.copytree(f, postprocessed_results_folder / f.name)
-    curated_folders = [p for p in curated_folder.iterdir() if "curated_" in p.name and p.is_dir()]
-    for f in curated_folders:
-        shutil.copytree(f, curated_results_folder / f.name[len("curated_") :])
 
     # Copy JSON preprocessed files
     preprocessed_json_files = [
