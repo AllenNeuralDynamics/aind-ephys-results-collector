@@ -24,7 +24,6 @@ from aind_data_schema.core.data_description import (
     Funding,
     DataLevel,
 )
-
 from aind_data_schema.core.processing import DataProcess, Processing, PipelineProcess
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 from aind_data_schema.schema_upgrade.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
