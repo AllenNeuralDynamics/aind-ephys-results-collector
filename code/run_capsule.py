@@ -163,6 +163,14 @@ if __name__ == "__main__":
             processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
         processing_old = Processing.model_construct(**processing_dict)
+        # Protect against processing_pipeline.data_processes.outputs being None
+        if hasattr(processing_old, "processing_pipeline"):
+            processing_pipeline = processing_old.processing_pipeline
+            if "data_processes" in processing_pipeline:
+                data_processes = processing_pipeline["data_processes"]
+                for data_process in data_processes:
+                    if data_process["outputs"] is None:
+                        data_process["outputs"] = dict()
         processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
         processing.processing_pipeline.data_processes.append(ephys_data_processes)
     else:
