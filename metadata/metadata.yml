@@ -1,5 +1,5 @@
 metadata_version: 1
-name: aind-ephys-results-collector
+name: Collect Results Ecephys
 description: Basic structure of a capsule to be customized as needed.
 authors:
 - name: AIND
