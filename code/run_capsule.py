@@ -100,10 +100,14 @@ if __name__ == "__main__":
     ]
     for f in postprocessed_folders:
         recording_name = f.name[len("postprocessed_") :]
-        shutil.copytree(f, postprocessed_results_folder / recording_name)
 
-        # TODO: get sorting, add curation and unit_classifier properties and save to curated
-        we = si.load_waveforms(f, with_recording=False)
+        try:
+            we = si.load_waveforms(f, with_recording=False)
+            shutil.copytree(f, postprocessed_results_folder / recording_name)
+        except:
+            print(f"Spike sorting failed on {recording_name}. Skipping collection")
+            continue
+        
         # add defaut_qc property
         curation_file = curated_folder / f"qc_{recording_name}.npy"
         if curation_file.is_file():
