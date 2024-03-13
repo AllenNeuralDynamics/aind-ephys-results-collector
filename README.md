@@ -4,7 +4,7 @@
 
 ### Description
 
-This simple capsule is designed to collect the results for the AIND pipeline. 
+This simple capsule is designed to collect the results for the AIND ecephys pipeline. 
 
 
 ### Inputs
