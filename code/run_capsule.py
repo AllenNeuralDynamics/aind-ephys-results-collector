@@ -17,7 +17,7 @@ import spikeinterface as si
 from aind_data_schema.core.data_description import (
     DataDescription,
     DerivedDataDescription,
-    Institution,
+    Organization,
     Modality,
     Modality,
     Platform,
@@ -25,8 +25,8 @@ from aind_data_schema.core.data_description import (
     DataLevel,
 )
 from aind_data_schema.core.processing import DataProcess, Processing, PipelineProcess
-from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
-from aind_data_schema.schema_upgrade.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
+from aind_metadata_upgrader.data_description_upgrade import DataDescriptionUpgrade
+from aind_metadata_upgrader.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
 
 PIPELINE_MAINAINER = "Alessio Buccino"
@@ -223,10 +223,10 @@ if __name__ == "__main__":
         data_description_dict = {}
         data_description_dict["creation_time"] = datetime.now()
         data_description_dict["name"] = session_name
-        data_description_dict["institution"] = Institution.AIND
+        data_description_dict["institution"] = Organization.AIND
         data_description_dict["data_level"] = DataLevel.RAW
         data_description_dict["investigators"] = ["Unknown"]
-        data_description_dict["funding_source"] = [Funding(funder=Institution.AIND)]
+        data_description_dict["funding_source"] = [Funding(funder=Organization.AIND)]
         data_description_dict["modality"] = [Modality.ECEPHYS]
         data_description_dict["platform"] = Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
