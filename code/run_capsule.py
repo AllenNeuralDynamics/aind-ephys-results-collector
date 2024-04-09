@@ -209,16 +209,20 @@ if __name__ == "__main__":
 
     process_name = "sorted"
     if data_description is not None:
-        upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        additional_required_kwargs = dict()
-        # at least one investigator is required
-        if len(data_description.investigators) == 0:
-            additional_required_kwargs.update(dict(investigators=["Unknown"]))
-        upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS, **additional_required_kwargs)
-        derived_data_description = DerivedDataDescription.from_data_description(
-            upgraded_data_description, process_name=process_name
-        )
-    else:
+        try:
+            upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
+            additional_required_kwargs = dict()
+            # at least one investigator is required
+            if len(data_description.investigators) == 0:
+                additional_required_kwargs.update(dict(investigators=["Unknown"]))
+            upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS, **additional_required_kwargs)
+            derived_data_description = DerivedDataDescription.from_data_description(
+                upgraded_data_description, process_name=process_name
+            )
+        except Exception as e:
+            print(f"Failed upgrading data description for error:\n{e}\nCreating from scratch.")
+            data_description = None
+    if data_description is None:
         # make from scratch:
         data_description_dict = {}
         data_description_dict["creation_time"] = datetime.now()
