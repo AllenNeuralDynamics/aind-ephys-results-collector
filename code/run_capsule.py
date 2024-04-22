@@ -103,7 +103,7 @@ if __name__ == "__main__":
         recording_name = f.name[len("postprocessed_") :]
 
         try:
-            we = si.load_waveforms(f, with_recording=False)
+            analyzer = si.load_sorting_analyzer(f)
             shutil.copytree(f, postprocessed_results_folder / recording_name)
         except:
             print(f"Spike sorting failed on {recording_name}. Skipping collection")
@@ -113,17 +113,17 @@ if __name__ == "__main__":
         curation_file = curated_folder / f"qc_{recording_name}.npy"
         if curation_file.is_file():
             default_qc = np.load(curation_file)
-            we.sorting.set_property("default_qc", default_qc)
+            analyzer.sorting.set_property("default_qc", default_qc)
         # add classifier
         unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
         if unit_classifier_file.is_file():
             unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
             decoder_label = unit_classifier_df["decoder_label"]
-            we.sorting.set_property("decoder_label", decoder_label)
+            analyzer.sorting.set_property("decoder_label", decoder_label)
             decoder_probability = unit_classifier_df["decoder_probability"]
-            we.sorting.set_property("decoder_probability", decoder_probability)
+            analyzer.sorting.set_property("decoder_probability", decoder_probability)
 
-        _ = we.sorting.save(folder=curated_results_folder / recording_name)
+        _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
@@ -166,19 +166,23 @@ if __name__ == "__main__":
     if (session / "processing.json").is_file():
         with open(session / "processing.json", "r") as processing_file:
             processing_dict = json.load(processing_file)
-        # Allow for parsing earlier versions of Processing files
-        processing_old = Processing.model_construct(**processing_dict)
-        # Protect against processing_pipeline.data_processes.outputs being None
-        if hasattr(processing_old, "processing_pipeline"):
-            processing_pipeline = processing_old.processing_pipeline
-            if "data_processes" in processing_pipeline:
-                data_processes = processing_pipeline["data_processes"]
-                for data_process in data_processes:
-                    if data_process["outputs"] is None:
-                        data_process["outputs"] = dict()
-        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
-        processing.processing_pipeline.data_processes.append(ephys_data_processes)
-    else:
+        try:
+            # Allow for parsing earlier versions of Processing files
+            processing_old = Processing.model_construct(**processing_dict)
+            # Protect against processing_pipeline.data_processes.outputs being None
+            if hasattr(processing_old, "processing_pipeline"):
+                processing_pipeline = processing_old.processing_pipeline
+                if "data_processes" in processing_pipeline:
+                    data_processes = processing_pipeline["data_processes"]
+                    for data_process in data_processes:
+                        if data_process["outputs"] is None:
+                            data_process["outputs"] = dict()
+            processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
+            processing.processing_pipeline.data_processes.append(ephys_data_processes)
+        except Exception as e:
+            print(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
+            processing = None
+    if processing is None:
         processing_pipeline = PipelineProcess(
             data_processes=ephys_data_processes,
             processor_full_name=PIPELINE_MAINAINER,

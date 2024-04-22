@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -e
+
+git clone https://github.com/alejoe91/spikeinterface.git
+cd spikeinterface
+git checkout fix-get-templates-read-only
+pip install --no-cache-dir .[full,widgets]
+cd ..
+
+pip uninstall -y traitlets
+pip install --no-cache-dir --ignore-installed traitlets==5.9.0
