@@ -86,6 +86,8 @@ if __name__ == "__main__":
     # Move spikesorted / postprocessing / curated
     spikesorted_results_folder = results_folder / "spikesorted"
     spikesorted_results_folder.mkdir(exist_ok=True)
+    preprocessed_results_folder = results_folder / "preprocessed"
+    preprocessed_results_folder.mkdir(exist_ok=True)
     postprocessed_results_folder = results_folder / "postprocessed"
     postprocessed_results_folder.mkdir(exist_ok=True)
     curated_results_folder = results_folder / "curated"
@@ -137,7 +139,15 @@ if __name__ == "__main__":
     ]
     (results_folder / "preprocessed").mkdir(exist_ok=True)
     for preprocessed_file in preprocessed_json_files:
-        shutil.copy(preprocessed_file, results_folder / "preprocessed" / preprocessed_file.name[len("preprocessed_") :])
+        shutil.copy(preprocessed_file, preprocessed_results_folder / preprocessed_file.name[len("preprocessed_") :])
+    motion_folders = [
+        p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
+    ]
+    if len(motion_folders) > 0:
+        motion_results_folder = preprocessed_results_folder / "motion"
+        motion_results_folder.mkdir(exist_ok=True)
+        for motion_folder in motion_folders:
+            shutil.copytree(motion_folder, motion_results_folder / motion_folder.name[len("motion_") :])
 
     # Make visualization_output
     visualization_output = {}
