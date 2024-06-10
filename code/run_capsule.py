@@ -24,14 +24,14 @@ from aind_data_schema.core.data_description import (
     Funding,
     DataLevel,
 )
-from aind_data_schema.models.pid_names import PIDName
+from aind_data_schema_models.pid_names import PIDName
 from aind_data_schema.core.processing import DataProcess, Processing, PipelineProcess
 from aind_metadata_upgrader.data_description_upgrade import DataDescriptionUpgrade
 from aind_metadata_upgrader.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
 
 PIPELINE_MAINAINER = "Alessio Buccino"
-PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline-pykilosort"
+PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline-kilosort25"
 PIPELINE_VERSION = "1.0"
 
 
@@ -179,18 +179,22 @@ if __name__ == "__main__":
         with open(session / "processing.json", "r") as processing_file:
             processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
-        processing_old = Processing.model_construct(**processing_dict)
-        # Protect against processing_pipeline.data_processes.outputs being None
-        if hasattr(processing_old, "processing_pipeline"):
-            processing_pipeline = processing_old.processing_pipeline
-            if "data_processes" in processing_pipeline:
-                data_processes = processing_pipeline["data_processes"]
-                for data_process in data_processes:
-                    if data_process["outputs"] is None:
-                        data_process["outputs"] = dict()
-        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
-        processing.processing_pipeline.data_processes.append(ephys_data_processes)
-    else:
+        try:
+            processing_old = Processing.model_construct(**processing_dict)
+            # Protect against processing_pipeline.data_processes.outputs being None
+            if hasattr(processing_old, "processing_pipeline"):
+                processing_pipeline = processing_old.processing_pipeline
+                if "data_processes" in processing_pipeline:
+                    data_processes = processing_pipeline["data_processes"]
+                    for data_process in data_processes:
+                        if data_process["outputs"] is None:
+                            data_process["outputs"] = dict()
+            processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
+            processing.processing_pipeline.data_processes.append(ephys_data_processes)
+        except Exception as e:
+            print(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
+            processing = None
+    if processing is None:
         processing_pipeline = PipelineProcess(
             data_processes=ephys_data_processes,
             processor_full_name=PIPELINE_MAINAINER,
