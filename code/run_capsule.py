@@ -175,6 +175,7 @@ if __name__ == "__main__":
         data_process = DataProcessUpgrade(data_process_old).upgrade()
         ephys_data_processes.append(data_process)
 
+    processing = None
     if (session / "processing.json").is_file():
         with open(session / "processing.json", "r") as processing_file:
             processing_dict = json.load(processing_file)
@@ -193,7 +194,7 @@ if __name__ == "__main__":
             processing.processing_pipeline.data_processes.append(ephys_data_processes)
         except Exception as e:
             print(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
-            processing = None
+
     if processing is None:
         processing_pipeline = PipelineProcess(
             data_processes=ephys_data_processes,
@@ -207,20 +208,17 @@ if __name__ == "__main__":
         f.write(processing.model_dump_json(indent=3))
 
     # Handle DataDescription model
+    data_description = None
     if (session / "data_description.json").is_file():
         with open(session / "data_description.json", "r") as data_description_file:
             data_description_json = json.load(data_description_file)
         # Allow for parsing earlier versions of Processing files
         data_description = DataDescription.model_construct(**data_description_json)
-    else:
-        data_description = None
 
     if (session / "subject.json").is_file():
         with open(session / "subject.json", "r") as subject_file:
             subject_info = json.load(subject_file)
         subject_id = subject_info["subject_id"]
-    elif len(session_name.split("_")) > 1:
-        subject_id = session_name.split("_")[1]
     else:
         subject_id = "000000"  # unknown
 
