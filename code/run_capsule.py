@@ -31,7 +31,7 @@ from aind_metadata_upgrader.processing_upgrade import ProcessingUpgrade, DataPro
 
 
 PIPELINE_MAINAINER = "Alessio Buccino"
-PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline-pykilosort"
+PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline-kilosort25"
 PIPELINE_VERSION = "1.0"
 
 
