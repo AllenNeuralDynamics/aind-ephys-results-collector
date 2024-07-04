@@ -114,8 +114,8 @@ if __name__ == "__main__":
             we = si.load_waveforms(f, with_recording=False)
             print(f"\t{recording_name}")
             shutil.copytree(f, postprocessed_results_folder / recording_name)
-        except:
-            print(f"\tSpike sorting failed on {recording_name}. Skipping collection")
+        except Exception as e:
+            print(f"\tSpike sorting failed on {recording_name}.\n\tError:\n\t{e}\n\tSkipping collection")
             continue
         
         # add defaut_qc property
