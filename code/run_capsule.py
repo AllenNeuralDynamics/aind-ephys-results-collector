@@ -93,9 +93,16 @@ if __name__ == "__main__":
     curated_results_folder = results_folder / "curated"
     curated_results_folder.mkdir(exist_ok=True)
 
+    # SPIKESORTED
+    print("Copying spikesorted folders to results:")
     spikesorted_folders = [p for p in spikesorted_folder.iterdir() if "spikesorted_" in p.name and p.is_dir()]
     for f in spikesorted_folders:
-        shutil.copytree(f, spikesorted_results_folder / f.name[len("spikesorted_") :])
+        recording_name = f.name[len("spikesorted_") :]
+        print(f"\t{recording_name}")
+        shutil.copytree(f, spikesorted_results_folder / recording_name)
+
+    # POSTPROCESSED / CURATED
+    print("Copying postprocessed and curated folders to results:")
     postprocessed_folders = [
         p
         for p in postprocessed_folder.iterdir()
@@ -103,12 +110,12 @@ if __name__ == "__main__":
     ]
     for f in postprocessed_folders:
         recording_name = f.name[len("postprocessed_") :]
-
         try:
             we = si.load_waveforms(f, with_recording=False)
+            print(f"\t{recording_name}")
             shutil.copytree(f, postprocessed_results_folder / recording_name)
         except:
-            print(f"Spike sorting failed on {recording_name}. Skipping collection")
+            print(f"\tSpike sorting failed on {recording_name}. Skipping collection")
             continue
         
         # add defaut_qc property
@@ -133,25 +140,35 @@ if __name__ == "__main__":
     for f in postprocessed_sorting_folders:
         shutil.copytree(f, postprocessed_results_folder / f.name)
 
-    # Copy JSON preprocessed files
+    # PREPROCESSED
+    print("Copying preprocessed folders to results:")
     preprocessed_json_files = [
         p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")
     ]
     (results_folder / "preprocessed").mkdir(exist_ok=True)
     for preprocessed_file in preprocessed_json_files:
-        shutil.copy(preprocessed_file, preprocessed_results_folder / preprocessed_file.name[len("preprocessed_") :])
+        recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
+        recording_name = preprocessed_file.stem[len("preprocessed_") :]
+        print(f"\t{recording_name}")
+        shutil.copy(preprocessed_file, preprocessed_results_folder / recording_json_file_name)
+
+    # MOTION
     motion_folders = [
         p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
     ]
     if len(motion_folders) > 0:
+        print("Copying preprocessed folders to results:")
         motion_results_folder = preprocessed_results_folder / "motion"
         motion_results_folder.mkdir(exist_ok=True)
         for motion_folder in motion_folders:
-            shutil.copytree(motion_folder, motion_results_folder / motion_folder.name[len("motion_") :])
+            recording_name = motion_folder.name[len("motion_") :]
+            print(f"\t{recording_name}")
+            shutil.copytree(motion_folder, motion_results_folder / recording_name)
 
     
 
-    # Make visualization_output
+    # VISUALIZATION
+    print("Copying visualization outputs to results:")
     visualization_output = {}
     visualization_json_files = [
         p
@@ -160,13 +177,15 @@ if __name__ == "__main__":
     ]
     for visualization_json_file in visualization_json_files:
         recording_name = visualization_json_file.name[len("visualization_") : len(visualization_json_file.name) - 5]
+        print(f"\t{recording_name}")
         with open(visualization_json_file, "r") as f:
             visualization_dict = json.load(f)
         visualization_output[recording_name] = visualization_dict
     with open(results_folder / "visualization_output.json", "w") as f:
         json.dump(visualization_output, f, indent=4)
 
-    # Collect and aggregate data processes and make Processing model
+    # PROCESSING
+    print("Generating processing metadata")
     ephys_data_processes = []
     for json_file in data_processes_files:
         with open(json_file, "r") as data_process_file:
@@ -207,7 +226,8 @@ if __name__ == "__main__":
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.model_dump_json(indent=3))
 
-    # Handle DataDescription model
+    # DATA_DESCRIPTION
+    print("Generating data_description metadata")
     data_description = None
     if (session / "data_description.json").is_file():
         with open(session / "data_description.json", "r") as data_description_file:
@@ -259,7 +279,8 @@ if __name__ == "__main__":
     with (results_folder / "data_description.json").open("w") as f:
         f.write(derived_data_description.model_dump_json(indent=3))
 
-    # Propagate other metadata JSON files
+    # OTHER METADATA FILES
+    print("Propagating other metadata files")
     metadata_json_files = [
         p
         for p in session.iterdir()
