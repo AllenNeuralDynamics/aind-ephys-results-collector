@@ -99,7 +99,7 @@ if __name__ == "__main__":
     postprocessed_folders = [
         p
         for p in postprocessed_folder.iterdir()
-        if "postprocessed" in p.name and p.is_dir() and "-sorting" not in p.name
+        if "postprocessed" in p.name and p.is_dir()
     ]
     for f in postprocessed_folders:
         recording_name = f.name[len("postprocessed_") :]
