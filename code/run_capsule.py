@@ -102,11 +102,15 @@ if __name__ == "__main__":
         if "postprocessed" in p.name and p.is_dir()
     ]
     for f in postprocessed_folders:
-        recording_name = f.name[len("postprocessed_") :]
+        recording_name = f.stem[len("postprocessed_") :]
 
         try:
             analyzer = si.load_sorting_analyzer(f)
-            shutil.copytree(f, postprocessed_results_folder / recording_name)
+            if f.name.endswith(".zarr"):
+                recording_folder_name = f"{recording_name}.zarr"
+            else:
+                recording_folder_name = recording_name
+            shutil.copytree(f, postprocessed_results_folder / recording_folder_name)
         except:
             print(f"Spike sorting failed on {recording_name}. Skipping collection")
             continue
