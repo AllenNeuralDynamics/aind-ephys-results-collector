@@ -1,5 +1,5 @@
 metadata_version: 1
-name: Collect Results Ecephys (analyzer)
+name: Collect Results Ecephys
 description: This simple is designed to collect the results for the AIND ecephys pipeline.
 tags:
 - ecephys
