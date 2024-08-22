@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 import numpy as np
 import pandas as pd
+import os
 
 # SpikeInterface
 import spikeinterface as si
@@ -31,8 +32,8 @@ from aind_metadata_upgrader.processing_upgrade import ProcessingUpgrade, DataPro
 
 
 PIPELINE_MAINAINER = "Alessio Buccino"
-PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline-kilosort25"
-PIPELINE_VERSION = "1.0"
+PIPELINE_URL = os.getenv("PIPELINE_URL")
+PIPELINE_VERSION = os.getenv("PIPELINE_VERSION")
 
 
 data_folder = Path("../data/")
@@ -81,7 +82,16 @@ if __name__ == "__main__":
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
     session = ecephys_sessions[0]
-    session_name = session.name
+
+    json_files = [p for p in data_folder.iterdir() if "job" in p.name and p.suffix == ".json"]
+    # load session_name from any JSON file
+    if len(json_files) > 0:
+        with open(json_files[0], "r") as f:
+            job_dict = json.load(f)
+        session_name = job_dict["session_name"]
+        print(f"Loaded session name form JSON files: {session_name}")
+    else:
+        session_name = session.name
 
     # Move spikesorted / postprocessing / curated
     spikesorted_results_folder = results_folder / "spikesorted"
@@ -110,19 +120,24 @@ if __name__ == "__main__":
     ]
     for f in postprocessed_folders:
         recording_name = f.stem[len("postprocessed_") :]
-
+        analyzer_output_folder = None
         try:
             analyzer = si.load_sorting_analyzer(f)
             if f.name.endswith(".zarr"):
                 recording_folder_name = f"{recording_name}.zarr"
+                analyzer_format = "zarr"
             else:
                 recording_folder_name = recording_name
+                analyzer_format = "binary_folder"
             shutil.copytree(f, postprocessed_results_folder / recording_folder_name)
+            analyzer_output_folder = postprocessed_results_folder / recording_folder_name 
         except:
             print(f"Spike sorting failed on {recording_name}. Skipping collection")
             continue
         
         # add defaut_qc property
+        default_qc = None
+        decoder_label = None
         curation_file = curated_folder / f"qc_{recording_name}.npy"
         if curation_file.is_file():
             default_qc = np.load(curation_file)
@@ -131,12 +146,42 @@ if __name__ == "__main__":
         unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
         if unit_classifier_file.is_file():
             unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
-            decoder_label = unit_classifier_df["decoder_label"]
+            decoder_label = np.array(unit_classifier_df["decoder_label"].values).astype("str")
             analyzer.sorting.set_property("decoder_label", decoder_label)
-            decoder_probability = unit_classifier_df["decoder_probability"]
+            decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
             analyzer.sorting.set_property("decoder_probability", decoder_probability)
 
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
+
+        # update analyzer properties
+        if analyzer_format == "binary_folder":
+            if default_qc is not None or decoder_label is not None:
+                _ = analyzer.sorting.save(folder=analyzer_output_folder / "sorting", overwrite=True)
+            # update recording JSON path
+            recording_json_path = analyzer_output_folder / "recording.json"
+            if recording_json_path.is_file() and session_name != "ecephys_session":
+                with open(recording_json_path, "r") as f:
+                    recording_dict = json.load(f)
+                recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
+                recording_json_path.write_text(recording_dict_str, encoding="utf8")
+        else:
+            import zarr
+            import numcodecs
+
+            analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
+
+            if default_qc is not None or decoder_label is not None:
+                from spikeinterface.core.zarrextractors import add_sorting_to_zarr_group
+                del analyzer_root["sorting"]
+                add_sorting_to_zarr_group(analyzer.sorting, analyzer_root.create_group("sorting"))
+
+            # update recording field if is JSON
+            if isinstance(analyzer_root["recording"].filters[0], numcodecs.JSON) and session_name != "ecephys_session":
+                recording_dict = analyzer_root["recording"][0]
+                recording_dict_mapped = json.loads(json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name))
+                del analyzer_root["recording"]
+                zarr_rec = np.array([recording_dict_mapped], dtype=object)
+                analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=numcodecs.JSON())
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
@@ -153,8 +198,15 @@ if __name__ == "__main__":
     for preprocessed_file in preprocessed_json_files:
         recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
         recording_name = preprocessed_file.stem[len("preprocessed_") :]
+        recording_output_json_file = preprocessed_results_folder / recording_json_file_name
         print(f"\t{recording_name}")
-        shutil.copy(preprocessed_file, preprocessed_results_folder / recording_json_file_name)
+        if session_name == "ecephys_session":
+            shutil.copy(preprocessed_file, recording_output_json_file)
+        else:
+            with open(preprocessed_file, "r") as f:
+                recording_dict = json.load(f)
+            recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
+            recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
 
     # MOTION
     motion_folders = [
@@ -168,8 +220,6 @@ if __name__ == "__main__":
             recording_name = motion_folder.name[len("motion_") :]
             print(f"\t{recording_name}")
             shutil.copytree(motion_folder, motion_results_folder / recording_name)
-
-    
 
     # VISUALIZATION
     print("Copying visualization outputs to results:")
@@ -215,9 +265,12 @@ if __name__ == "__main__":
                             data_process["outputs"] = dict()
             processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
             processing.processing_pipeline.data_processes.append(ephys_data_processes)
+            processing.processing_pipeline.pipeline_url = PIPELINE_URL
+            processing.processing_pipeline.pipeline_version = PIPELINE_VERSION
         except Exception as e:
             print(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
             processing = None
+
     if processing is None:
         processing_pipeline = PipelineProcess(
             data_processes=ephys_data_processes,
@@ -288,7 +341,7 @@ if __name__ == "__main__":
     metadata_json_files = [
         p
         for p in session.iterdir()
-        if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name
+        if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name and "job" not in p.name
     ]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
