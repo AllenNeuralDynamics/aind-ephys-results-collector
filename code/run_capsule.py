@@ -103,6 +103,39 @@ if __name__ == "__main__":
     curated_results_folder = results_folder / "curated"
     curated_results_folder.mkdir(exist_ok=True)
 
+    # PREPROCESSED
+    print("Copying preprocessed folders to results:")
+    preprocessed_json_files = [
+        p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")
+    ]
+    (results_folder / "preprocessed").mkdir(exist_ok=True)
+    for preprocessed_file in preprocessed_json_files:
+        recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
+        recording_name = preprocessed_file.stem[len("preprocessed_") :]
+        recording_output_json_file = preprocessed_results_folder / recording_json_file_name
+        print(f"\t{recording_name}")
+        if session_name == "ecephys_session":
+            shutil.copy(preprocessed_file, recording_output_json_file)
+        else:
+            print(f"\tRemapping preprocessed recording JSON path")
+            with open(preprocessed_file, "r") as f:
+                recording_dict = json.load(f)
+            recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
+            recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
+
+    # MOTION
+    motion_folders = [
+        p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
+    ]
+    if len(motion_folders) > 0:
+        print("Copying motion folders to results:")
+        motion_results_folder = preprocessed_results_folder / "motion"
+        motion_results_folder.mkdir(exist_ok=True)
+        for motion_folder in motion_folders:
+            recording_name = motion_folder.name[len("motion_") :]
+            print(f"\t{recording_name}")
+            shutil.copytree(motion_folder, motion_results_folder / recording_name)
+
     # SPIKESORTED
     print("Copying spikesorted folders to results:")
     spikesorted_folders = [p for p in spikesorted_folder.iterdir() if "spikesorted_" in p.name and p.is_dir()]
@@ -121,6 +154,7 @@ if __name__ == "__main__":
     for f in postprocessed_folders:
         recording_name = f.stem[len("postprocessed_") :]
         analyzer_output_folder = None
+        print(f"\t{recording_name}")
         try:
             analyzer = si.load_sorting_analyzer(f)
             if f.name.endswith(".zarr"):
@@ -162,8 +196,11 @@ if __name__ == "__main__":
             if recording_json_path.is_file() and session_name != "ecephys_session":
                 with open(recording_json_path, "r") as f:
                     recording_dict = json.load(f)
-                recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
-                recording_json_path.write_text(recording_dict_str, encoding="utf8")
+                recording_dict_str = json.dumps(recording_dict, indent=4)
+                if "ecephys_session" in recording_dict_str:
+                    print(f"\tRemapping analyzer recording path")
+                    recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+                    recording_json_path.write_text(recording_dict_str, encoding="utf8")
         else:
             import zarr
             import numcodecs
@@ -176,12 +213,26 @@ if __name__ == "__main__":
                 add_sorting_to_zarr_group(analyzer.sorting, analyzer_root.create_group("sorting"))
 
             # update recording field if is JSON
-            if isinstance(analyzer_root["recording"].filters[0], numcodecs.JSON) and session_name != "ecephys_session":
-                recording_dict = analyzer_root["recording"][0]
-                recording_dict_mapped = json.loads(json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name))
-                del analyzer_root["recording"]
-                zarr_rec = np.array([recording_dict_mapped], dtype=object)
-                analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=numcodecs.JSON())
+            if session_name != "ecephys_session":
+                recording_root = analyzer_root["recording"]
+                object_codec = None
+                if isinstance(recording_root.filters[0], numcodecs.JSON):
+                    object_codec = numcodecs.JSON()
+                elif isinstance(recording_root.filters[0], numcodecs.Pickle):
+                    object_codec = numcodecs.Pickle()
+                if object_codec is not None:
+                    recording_dict = recording_root[0]
+                    recording_dict_str = json.dumps(recording_dict, indent=4)
+                    if "ecephys_session" in recording_dict_str:
+                        print(f"\tRemapping analyzer recording path")
+                        recording_dict_mapped = json.loads(
+                            recording_dict_str.replace("ecephys_session", session_name)
+                        )
+                        del analyzer_root["recording"]
+                        zarr_rec = np.array([recording_dict_mapped], dtype=object)
+                        analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
+                else:
+                    print(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
@@ -189,37 +240,6 @@ if __name__ == "__main__":
     for f in postprocessed_sorting_folders:
         shutil.copytree(f, postprocessed_results_folder / f.name)
 
-    # PREPROCESSED
-    print("Copying preprocessed folders to results:")
-    preprocessed_json_files = [
-        p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")
-    ]
-    (results_folder / "preprocessed").mkdir(exist_ok=True)
-    for preprocessed_file in preprocessed_json_files:
-        recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
-        recording_name = preprocessed_file.stem[len("preprocessed_") :]
-        recording_output_json_file = preprocessed_results_folder / recording_json_file_name
-        print(f"\t{recording_name}")
-        if session_name == "ecephys_session":
-            shutil.copy(preprocessed_file, recording_output_json_file)
-        else:
-            with open(preprocessed_file, "r") as f:
-                recording_dict = json.load(f)
-            recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
-            recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
-
-    # MOTION
-    motion_folders = [
-        p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
-    ]
-    if len(motion_folders) > 0:
-        print("Copying preprocessed folders to results:")
-        motion_results_folder = preprocessed_results_folder / "motion"
-        motion_results_folder.mkdir(exist_ok=True)
-        for motion_folder in motion_folders:
-            recording_name = motion_folder.name[len("motion_") :]
-            print(f"\t{recording_name}")
-            shutil.copytree(motion_folder, motion_results_folder / recording_name)
 
     # VISUALIZATION
     print("Copying visualization outputs to results:")
