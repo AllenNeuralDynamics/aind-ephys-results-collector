@@ -4,5 +4,5 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN pip install -U --no-cache-dir \
     aind-data-schema==1.0.0 \
-    aind-metadata-upgrader==0.0.11 \
+    aind-metadata-upgrader==0.0.14 \
     spikeinterface[full]==0.101.0
