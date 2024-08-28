@@ -9,6 +9,6 @@ ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.38.0 \
+    aind-data-schema==1.0.0 \
     aind-metadata-upgrader==0.0.11 \
     spikeinterface[full]==0.101.0
