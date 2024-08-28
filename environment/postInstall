@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+
+git clone https://github.com/AllenNeuralDynamics/aind-metadata-upgrader.git
+cd aind-metadata-upgrader
+git checkout feat-49-upgrade-to-ADS-1.0
+pip install --no-cache-dir .
+cd ..

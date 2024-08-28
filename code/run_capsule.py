@@ -322,11 +322,15 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         try:
-            upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
+            upgrader = DataDescriptionUpgrade(data_description)
             additional_required_kwargs = dict()
             # at least one investigator is required
             if len(data_description.investigators) == 0:
                 additional_required_kwargs.update(dict(investigators=["Unknown"]))
+            if len(data_description.funding_source) == 0:
+                additional_required_kwargs.update(
+                    dict(funding_source=[Funding(funder=Organization.AI)])
+                )
             upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS, **additional_required_kwargs)
             derived_data_description = DerivedDataDescription.from_data_description(
                 upgraded_data_description, process_name=process_name
