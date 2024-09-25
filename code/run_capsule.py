@@ -89,7 +89,7 @@ if __name__ == "__main__":
         with open(json_files[0], "r") as f:
             job_dict = json.load(f)
         session_name = job_dict["session_name"]
-        print(f"Loaded session name form JSON files: {session_name}")
+        print(f"Loaded session name from JSON files: {session_name}")
     else:
         session_name = session.name
 
