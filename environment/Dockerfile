@@ -10,7 +10,7 @@ COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
     aind-data-schema==1.0.0 \
-    aind-metadata-upgrader==0.0.14 \
+    aind-metadata-upgrader==0.0.18 \
     spikeinterface[full]==0.101.1
 
 COPY postInstall /

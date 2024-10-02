@@ -40,7 +40,7 @@ data_folder = Path("../data/")
 results_folder = Path("../results/")
 
 if __name__ == "__main__":
-    ###### VISUALIZATION #########
+    ###### COLLECT RESULTS #########
     print("\n\nCOLLECTING RESULTS")
     t_collection_start = time.perf_counter()
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         with open(json_files[0], "r") as f:
             job_dict = json.load(f)
         session_name = job_dict["session_name"]
-        print(f"Loaded session name form JSON files: {session_name}")
+        print(f"Loaded session name from JSON files: {session_name}")
     else:
         session_name = session.name
 
