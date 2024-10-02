@@ -40,7 +40,7 @@ data_folder = Path("../data/")
 results_folder = Path("../results/")
 
 if __name__ == "__main__":
-    ###### VISUALIZATION #########
+    ###### COLLECT RESULTS #########
     print("\n\nCOLLECTING RESULTS")
     t_collection_start = time.perf_counter()
 
