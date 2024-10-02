@@ -156,7 +156,7 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         print(f"\t{recording_name}")
         try:
-            analyzer = si.load_sorting_analyzer(f)
+            analyzer = si.load_sorting_analyzer(f, load_extensions=False)
             if f.name.endswith(".zarr"):
                 recording_folder_name = f"{recording_name}.zarr"
                 analyzer_format = "zarr"
