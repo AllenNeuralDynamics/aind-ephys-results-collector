@@ -258,6 +258,17 @@ if __name__ == "__main__":
     with open(results_folder / "visualization_output.json", "w") as f:
         json.dump(visualization_output, f, indent=4)
 
+    # Visualization folders
+    visualization_folders = [
+        p for p in visualization_folder.iterdir() if p.is_dir() and p.name.startswith("visualization_")
+    ]
+    if len(visualization_folders) > 0:
+        visualization_output_folder = results_folder / "visualization"
+        visualization_output_folder.mkdir(exist_ok=True)
+        for viz_folder in visualization_folders:
+            recording_name = viz_folder.name[len("visualization_") :]
+            shutil.copytree(viz_folder, visualization_output_folder / recording_name)
+
     # PROCESSING
     print("Generating processing metadata")
     ephys_data_processes = []
