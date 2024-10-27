@@ -267,7 +267,6 @@ if __name__ == "__main__":
         visualization_output_folder.mkdir(exist_ok=True)
         for viz_folder in visualization_folders:
             recording_name = viz_folder.name[len("visualization_") :]
-            (visualization_output_folder / recording_name).mkdir(exist_ok=True)
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
 
     # PROCESSING
