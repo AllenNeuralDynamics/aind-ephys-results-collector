@@ -175,15 +175,17 @@ if __name__ == "__main__":
         curation_file = curated_folder / f"qc_{recording_name}.npy"
         if curation_file.is_file():
             default_qc = np.load(curation_file)
-            analyzer.sorting.set_property("default_qc", default_qc)
+            if len(default_qc) == len(analyzer.unit_ids):
+                analyzer.sorting.set_property("default_qc", default_qc)
         # add classifier
         unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
         if unit_classifier_file.is_file():
             unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
-            decoder_label = np.array(unit_classifier_df["decoder_label"].values).astype("str")
-            analyzer.sorting.set_property("decoder_label", decoder_label)
-            decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
-            analyzer.sorting.set_property("decoder_probability", decoder_probability)
+            if len(unit_classifier_df) == len(analyzer.unit_ids):
+                decoder_label = np.array(unit_classifier_df["decoder_label"].values).astype("str")
+                analyzer.sorting.set_property("decoder_label", decoder_label)
+                decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
+                analyzer.sorting.set_property("decoder_probability", decoder_probability)
 
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
