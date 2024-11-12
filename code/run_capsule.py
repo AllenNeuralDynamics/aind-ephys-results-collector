@@ -297,7 +297,7 @@ if __name__ == "__main__":
                         if data_process["outputs"] is None:
                             data_process["outputs"] = dict()
             processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
-            processing.processing_pipeline.data_processes.append(ephys_data_processes)
+            processing.processing_pipeline.data_processes.extend(ephys_data_processes)
             processing.processing_pipeline.pipeline_url = PIPELINE_URL
             processing.processing_pipeline.pipeline_version = PIPELINE_VERSION
         except Exception as e:
