@@ -10,6 +10,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import os
+import logging
 
 # SpikeInterface
 import spikeinterface as si
@@ -47,12 +48,12 @@ results_folder = Path("../results/")
 
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
-    print("\n\nCOLLECTING RESULTS")
+    logging.info("\n\nCOLLECTING RESULTS")
     t_collection_start = time.perf_counter()
 
     # check if test
     if (data_folder / "postprocessing_pipeline_output_test").is_dir():
-        print("\n*******************\n**** TEST MODE ****\n*******************\n")
+        logging.info("\n*******************\n**** TEST MODE ****\n*******************\n")
         postprocessed_folder = data_folder / "postprocessing_pipeline_output_test"
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
@@ -115,7 +116,7 @@ if __name__ == "__main__":
         with open(json_files[0], "r") as f:
             job_dict = json.load(f)
         session_name = job_dict["session_name"]
-        print(f"Loaded session name from JSON files: {session_name}")
+        logging.info(f"Loaded session name from JSON files: {session_name}")
     else:
         session_name = ecephys_session_folder.name
 
@@ -130,7 +131,7 @@ if __name__ == "__main__":
     curated_results_folder.mkdir(exist_ok=True)
 
     # PREPROCESSED
-    print("Copying preprocessed folders to results:")
+    logging.info("Copying preprocessed folders to results:")
     preprocessed_json_files = [
         p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")
     ]
@@ -139,11 +140,11 @@ if __name__ == "__main__":
         recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
         recording_name = preprocessed_file.stem[len("preprocessed_") :]
         recording_output_json_file = preprocessed_results_folder / recording_json_file_name
-        print(f"\t{recording_name}")
+        logging.info(f"\t{recording_name}")
         if session_name == "ecephys_session":
             shutil.copy(preprocessed_file, recording_output_json_file)
         else:
-            print(f"\tRemapping preprocessed recording JSON path")
+            logging.info(f"\tRemapping preprocessed recording JSON path")
             with open(preprocessed_file, "r") as f:
                 recording_dict = json.load(f)
             recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
@@ -154,24 +155,24 @@ if __name__ == "__main__":
         p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
     ]
     if len(motion_folders) > 0:
-        print("Copying motion folders to results:")
+        logging.info("Copying motion folders to results:")
         motion_results_folder = preprocessed_results_folder / "motion"
         motion_results_folder.mkdir(exist_ok=True)
         for motion_folder in motion_folders:
             recording_name = motion_folder.name[len("motion_") :]
-            print(f"\t{recording_name}")
+            logging.info(f"\t{recording_name}")
             shutil.copytree(motion_folder, motion_results_folder / recording_name)
 
     # SPIKESORTED
-    print("Copying spikesorted folders to results:")
+    logging.info("Copying spikesorted folders to results:")
     spikesorted_folders = [p for p in spikesorted_folder.iterdir() if "spikesorted_" in p.name and p.is_dir()]
     for f in spikesorted_folders:
         recording_name = f.name[len("spikesorted_") :]
-        print(f"\t{recording_name}")
+        logging.info(f"\t{recording_name}")
         shutil.copytree(f, spikesorted_results_folder / recording_name)
 
     # POSTPROCESSED / CURATED
-    print("Copying postprocessed and curated folders to results:")
+    logging.info("Copying postprocessed and curated folders to results:")
     postprocessed_folders = [
         p
         for p in postprocessed_folder.iterdir()
@@ -180,7 +181,7 @@ if __name__ == "__main__":
     for f in postprocessed_folders:
         recording_name = f.stem[len("postprocessed_") :]
         analyzer_output_folder = None
-        print(f"\t{recording_name}")
+        logging.info(f"\t{recording_name}")
         try:
             analyzer = si.load_sorting_analyzer(f, load_extensions=False)
             if f.name.endswith(".zarr"):
@@ -192,7 +193,7 @@ if __name__ == "__main__":
             shutil.copytree(f, postprocessed_results_folder / recording_folder_name)
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name 
         except:
-            print(f"Spike sorting failed on {recording_name}. Skipping collection")
+            logging.info(f"Spike sorting failed on {recording_name}. Skipping collection")
             continue
         
         # add defaut_qc property
@@ -226,7 +227,7 @@ if __name__ == "__main__":
                     recording_dict = json.load(f)
                 recording_dict_str = json.dumps(recording_dict, indent=4)
                 if "ecephys_session" in recording_dict_str:
-                    print(f"\tRemapping analyzer recording path")
+                    logging.info(f"\tRemapping analyzer recording path")
                     recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
                     recording_json_path.write_text(recording_dict_str, encoding="utf8")
         else:
@@ -252,7 +253,7 @@ if __name__ == "__main__":
                     recording_dict = recording_root[0]
                     recording_dict_str = json.dumps(recording_dict, indent=4)
                     if "ecephys_session" in recording_dict_str:
-                        print(f"\tRemapping analyzer recording path")
+                        logging.info(f"\tRemapping analyzer recording path")
                         recording_dict_mapped = json.loads(
                             recording_dict_str.replace("ecephys_session", session_name)
                         )
@@ -260,7 +261,7 @@ if __name__ == "__main__":
                         zarr_rec = np.array([recording_dict_mapped], dtype=object)
                         analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
                 else:
-                    print(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
+                    logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
@@ -270,7 +271,7 @@ if __name__ == "__main__":
 
 
     # VISUALIZATION
-    print("Copying visualization outputs to results:")
+    logging.info("Copying visualization outputs to results:")
     visualization_output = {}
     visualization_json_files = [
         p
@@ -279,7 +280,7 @@ if __name__ == "__main__":
     ]
     for visualization_json_file in visualization_json_files:
         recording_name = visualization_json_file.name[len("visualization_") : len(visualization_json_file.name) - 5]
-        print(f"\t{recording_name}")
+        logging.info(f"\t{recording_name}")
         with open(visualization_json_file, "r") as f:
             visualization_dict = json.load(f)
         visualization_output[recording_name] = visualization_dict
@@ -298,7 +299,7 @@ if __name__ == "__main__":
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
 
     # PROCESSING
-    print("Generating processing metadata")
+    logging.info("Generating processing metadata")
     ephys_data_processes = []
     for json_file in data_processes_files:
         with open(json_file, "r") as data_process_file:
@@ -327,7 +328,7 @@ if __name__ == "__main__":
             processing.processing_pipeline.pipeline_url = PIPELINE_URL
             processing.processing_pipeline.pipeline_version = PIPELINE_VERSION
         except Exception as e:
-            print(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
+            logging.info(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
             processing = None
 
     if processing is None:
@@ -343,7 +344,7 @@ if __name__ == "__main__":
         f.write(processing.model_dump_json(indent=3))
 
     # DATA_DESCRIPTION
-    print("Generating data_description metadata")
+    logging.info("Generating data_description metadata")
     data_description = None
     if (ecephys_session_folder / "data_description.json").is_file():
         with open(ecephys_session_folder / "data_description.json", "r") as data_description_file:
@@ -375,7 +376,7 @@ if __name__ == "__main__":
                 upgraded_data_description, process_name=process_name
             )
         except Exception as e:
-            print(f"Failed upgrading data description for error:\n{e}\nCreating from scratch.")
+            logging.info(f"Failed upgrading data description for error:\n{e}\nCreating from scratch.")
             data_description = None
     if data_description is None:
         # make from scratch:
@@ -400,7 +401,7 @@ if __name__ == "__main__":
         f.write(derived_data_description.model_dump_json(indent=3))
 
     # OTHER METADATA FILES
-    print("Propagating other metadata files")
+    logging.info("Propagating other metadata files")
     metadata_json_files = [
         p
         for p in ecephys_session_folder.iterdir()
@@ -411,4 +412,4 @@ if __name__ == "__main__":
 
     t_collection_end = time.perf_counter()
     elapsed_time_collection = np.round(t_collection_end - t_collection_start, 2)
-    print(f"COLLECTION time: {elapsed_time_collection}s")
+    logging.info(f"COLLECTION time: {elapsed_time_collection}s")
