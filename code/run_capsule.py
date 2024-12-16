@@ -30,6 +30,12 @@ from aind_data_schema.core.processing import DataProcess, Processing, PipelinePr
 from aind_metadata_upgrader.data_description_upgrade import DataDescriptionUpgrade
 from aind_metadata_upgrader.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
+try:
+    from aind_log_utils import log
+
+    HAVE_AIND_LOG_UTILS = True
+except ImportError:
+    HAVE_AIND_LOG_UTILS = False
 
 PIPELINE_MAINAINER = "Alessio Buccino"
 PIPELINE_URL = os.getenv("PIPELINE_URL")
@@ -81,7 +87,27 @@ if __name__ == "__main__":
 
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
-    session = ecephys_sessions[0]
+    ecephys_session_folder = ecephys_sessions[0]
+
+    if HAVE_AIND_LOG_UTILS:
+        # look for subject.json and data_description.json files
+        subject_json = ecephys_session_folder / "subject.json"
+        subject_id = "undefined"
+        if subject_json.is_file():
+            subject_data = json.load(open(subject_json, "r"))
+            subject_id = subject_data["subject_id"]
+
+        data_description_json = ecephys_session_folder / "data_description.json"
+        session_name = "undefined"
+        if data_description_json.is_file():
+            data_description = json.load(open(data_description_json, "r"))
+            session_name = data_description["name"]
+
+        log.setup_logging(
+            "Collect Results Ecephys",
+            mouse_id=subject_id,
+            session_name=session_name,
+        )
 
     json_files = [p for p in data_folder.iterdir() if "job" in p.name and p.suffix == ".json"]
     # load session_name from any JSON file
@@ -91,7 +117,7 @@ if __name__ == "__main__":
         session_name = job_dict["session_name"]
         print(f"Loaded session name from JSON files: {session_name}")
     else:
-        session_name = session.name
+        session_name = ecephys_session_folder.name
 
     # Move spikesorted / postprocessing / curated
     spikesorted_results_folder = results_folder / "spikesorted"
@@ -282,8 +308,8 @@ if __name__ == "__main__":
         ephys_data_processes.append(data_process)
 
     processing = None
-    if (session / "processing.json").is_file():
-        with open(session / "processing.json", "r") as processing_file:
+    if (ecephys_session_folder / "processing.json").is_file():
+        with open(ecephys_session_folder / "processing.json", "r") as processing_file:
             processing_dict = json.load(processing_file)
         try:
             # Allow for parsing earlier versions of Processing files
@@ -319,14 +345,14 @@ if __name__ == "__main__":
     # DATA_DESCRIPTION
     print("Generating data_description metadata")
     data_description = None
-    if (session / "data_description.json").is_file():
-        with open(session / "data_description.json", "r") as data_description_file:
+    if (ecephys_session_folder / "data_description.json").is_file():
+        with open(ecephys_session_folder / "data_description.json", "r") as data_description_file:
             data_description_json = json.load(data_description_file)
         # Allow for parsing earlier versions of Processing files
         data_description = DataDescription.model_construct(**data_description_json)
 
-    if (session / "subject.json").is_file():
-        with open(session / "subject.json", "r") as subject_file:
+    if (ecephys_session_folder / "subject.json").is_file():
+        with open(ecephys_session_folder / "subject.json", "r") as subject_file:
             subject_info = json.load(subject_file)
         subject_id = subject_info["subject_id"]
     else:
@@ -377,7 +403,7 @@ if __name__ == "__main__":
     print("Propagating other metadata files")
     metadata_json_files = [
         p
-        for p in session.iterdir()
+        for p in ecephys_session_folder.iterdir()
         if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name and "job" not in p.name
     ]
     for json_file in metadata_json_files:
