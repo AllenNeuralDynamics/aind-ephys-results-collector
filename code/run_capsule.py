@@ -328,7 +328,7 @@ if __name__ == "__main__":
             processing.processing_pipeline.pipeline_url = PIPELINE_URL
             processing.processing_pipeline.pipeline_version = PIPELINE_VERSION
         except Exception as e:
-            logging.info(f"Failed upgrading processing for error:\n{e}\nCreating from scratch.")
+            logging.info(f"Failed upgrading processing for error:\nCreating from scratch.")
             processing = None
 
     if processing is None:
@@ -376,7 +376,7 @@ if __name__ == "__main__":
                 upgraded_data_description, process_name=process_name
             )
         except Exception as e:
-            logging.info(f"Failed upgrading data description for error:\n{e}\nCreating from scratch.")
+            logging.info(f"Failed upgrading data description for error:\nCreating from scratch.")
             data_description = None
     if data_description is None:
         # make from scratch:
