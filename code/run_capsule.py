@@ -48,7 +48,6 @@ results_folder = Path("../results/")
 
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
-    logging.info("\n\nCOLLECTING RESULTS")
     t_collection_start = time.perf_counter()
 
     # check if test
@@ -109,6 +108,10 @@ if __name__ == "__main__":
             mouse_id=subject_id,
             session_name=session_name,
         )
+    else:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    logging.info("\n\nCOLLECTING RESULTS")
 
     json_files = [p for p in data_folder.iterdir() if "job" in p.name and p.suffix == ".json"]
     # load session_name from any JSON file
