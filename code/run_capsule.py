@@ -220,6 +220,14 @@ if __name__ == "__main__":
 
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
+        # If the collect results runs in a pipeline, we need to further modify the mappings of the preprocessed recording in the analyzer.
+        # For the postprocessed capsule, the analyzer is in:
+        # "root/results/postprocessed_{recording_name}.zarr", so data folder is "../../data"
+        # After a pipeline run, two additional subfolders are added, and the sorted asset will be mounted as: 
+        # "root/data/{sorted_session_name}/postprocessed/{recording_name}.zarr"
+        # we therefore need to replace "../../" with "../../../.." in order to have the anlyzer automatically find and reload the preprocessed recording
+        PIPELINE_MODE = os.getenv("AWS_BATCH_JOB_ID") is not None
+
         # update analyzer properties
         if analyzer_format == "binary_folder":
             if default_qc is not None or decoder_label is not None:
@@ -233,6 +241,11 @@ if __name__ == "__main__":
                 if "ecephys_session" in recording_dict_str:
                     logging.info(f"\tRemapping analyzer recording path")
                     recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+                    if PIPELINE_MODE:
+                        recording_dict_str = recording_dict_str.replace("../../", "../../../../")
+                    else:
+                        # the collect capsule adds a postprocessed subfolder
+                        recording_dict_str = recording_dict_str.replace("../../", "../../../")
                     recording_json_path.write_text(recording_dict_str, encoding="utf8")
         else:
             import zarr
@@ -258,11 +271,16 @@ if __name__ == "__main__":
                     recording_dict_str = json.dumps(recording_dict, indent=4)
                     if "ecephys_session" in recording_dict_str:
                         logging.info(f"\tRemapping analyzer recording path")
-                        recording_dict_mapped = json.loads(
+                        recording_dict_str = json.loads(
                             recording_dict_str.replace("ecephys_session", session_name)
                         )
+                        if PIPELINE_MODE:
+                            recording_dict_str = recording_dict_str.replace("../../", "../../../../")
+                        else:
+                            # the collect capsule adds a postprocessed subfolder
+                            recording_dict_str = recording_dict_str.replace("../../", "../../../")
                         del analyzer_root["recording"]
-                        zarr_rec = np.array([recording_dict_mapped], dtype=object)
+                        zarr_rec = np.array([recording_dict_str], dtype=object)
                         analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
                 else:
                     logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
