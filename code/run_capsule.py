@@ -239,7 +239,6 @@ if __name__ == "__main__":
                     recording_dict = json.load(f)
                 recording_dict_str = json.dumps(recording_dict, indent=4)
                 if "ecephys_session" in recording_dict_str:
-                    logging.info(f"\tRemapping analyzer recording path")
                     recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
                     if PIPELINE_MODE:
                         recording_dict_str = recording_dict_str.replace("../../", "../../../../")
@@ -270,17 +269,15 @@ if __name__ == "__main__":
                     recording_dict = recording_root[0]
                     recording_dict_str = json.dumps(recording_dict, indent=4)
                     if "ecephys_session" in recording_dict_str:
-                        logging.info(f"\tRemapping analyzer recording path")
-                        recording_dict_str = json.loads(
-                            recording_dict_str.replace("ecephys_session", session_name)
-                        )
+                        recording_dict_str.replace("ecephys_session", session_name)
                         if PIPELINE_MODE:
                             recording_dict_str = recording_dict_str.replace("../../", "../../../../")
                         else:
                             # the collect capsule adds a postprocessed subfolder
                             recording_dict_str = recording_dict_str.replace("../../", "../../../")
+                        recording_dict_mapped = json.loads(recording_dict_str)
                         del analyzer_root["recording"]
-                        zarr_rec = np.array([recording_dict_str], dtype=object)
+                        zarr_rec = np.array([recording_dict_mapped], dtype=object)
                         analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
                 else:
                     logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
