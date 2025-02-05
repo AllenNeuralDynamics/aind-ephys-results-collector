@@ -269,7 +269,7 @@ if __name__ == "__main__":
                     recording_dict = recording_root[0]
                     recording_dict_str = json.dumps(recording_dict, indent=4)
                     if "ecephys_session" in recording_dict_str:
-                        recording_dict_str.replace("ecephys_session", session_name)
+                        recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
                         if PIPELINE_MODE:
                             recording_dict_str = recording_dict_str.replace("../../", "../../../../")
                         else:
