@@ -252,10 +252,12 @@ if __name__ == "__main__":
 
             analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
 
+            need_consolidate = False
             if default_qc is not None or decoder_label is not None:
                 from spikeinterface.core.zarrextractors import add_sorting_to_zarr_group
                 del analyzer_root["sorting"]
                 add_sorting_to_zarr_group(analyzer.sorting, analyzer_root.create_group("sorting"))
+                need_consolidate = True
 
             # update recording field if is JSON
             if session_name != "ecephys_session":
@@ -279,8 +281,12 @@ if __name__ == "__main__":
                         del analyzer_root["recording"]
                         zarr_rec = np.array([recording_dict_mapped], dtype=object)
                         analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
+                    need_consolidate = True
                 else:
                     logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
+
+            if need_consolidate:
+                zarr.consolidate_metadata(analyzer_root.store)
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
