@@ -187,15 +187,15 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
-            analyzer = si.load(f, load_extensions=False)
             if f.name.endswith(".zarr"):
                 recording_folder_name = f"{recording_name}.zarr"
                 analyzer_format = "zarr"
             else:
                 recording_folder_name = recording_name
                 analyzer_format = "binary_folder"
-            shutil.copytree(f, postprocessed_results_folder / recording_folder_name)
-            analyzer_output_folder = postprocessed_results_folder / recording_folder_name 
+            analyzer_output_folder = postprocessed_results_folder / recording_folder_name
+            shutil.copytree(f, analyzer_output_folder)
+            analyzer = si.load(analyzer_output_folder, load_extensions=False)
         except:
             logging.info(f"Spike sorting failed on {recording_name}. Skipping collection")
             continue
