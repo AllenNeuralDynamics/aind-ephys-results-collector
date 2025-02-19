@@ -187,7 +187,7 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
-            analyzer = si.load_sorting_analyzer(f, load_extensions=False)
+            analyzer = si.load(f, load_extensions=False)
             if f.name.endswith(".zarr"):
                 recording_folder_name = f"{recording_name}.zarr"
                 analyzer_format = "zarr"
@@ -207,16 +207,16 @@ if __name__ == "__main__":
         if curation_file.is_file():
             default_qc = np.load(curation_file)
             if len(default_qc) == len(analyzer.unit_ids):
-                analyzer.sorting.set_property("default_qc", default_qc)
+                analyzer.set_sorting_property("default_qc", default_qc, save=True)
         # add classifier
         unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
         if unit_classifier_file.is_file():
             unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
             if len(unit_classifier_df) == len(analyzer.unit_ids):
                 decoder_label = np.array(unit_classifier_df["decoder_label"].values).astype("str")
-                analyzer.sorting.set_property("decoder_label", decoder_label)
+                analyzer.set_sorting_property("decoder_label", decoder_label, save=True)
                 decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
-                analyzer.sorting.set_property("decoder_probability", decoder_probability)
+                analyzer.set_sorting_property("decoder_probability", decoder_probability, save=True)
 
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
@@ -230,9 +230,6 @@ if __name__ == "__main__":
 
         # update analyzer properties
         if analyzer_format == "binary_folder":
-            if default_qc is not None or decoder_label is not None:
-                _ = analyzer.sorting.save(folder=analyzer_output_folder / "sorting", overwrite=True)
-            # update recording JSON path
             recording_json_path = analyzer_output_folder / "recording.json"
             if recording_json_path.is_file() and session_name != "ecephys_session":
                 with open(recording_json_path, "r") as f:
@@ -251,13 +248,6 @@ if __name__ == "__main__":
             import numcodecs
 
             analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-
-            need_consolidate = False
-            if default_qc is not None or decoder_label is not None:
-                from spikeinterface.core.zarrextractors import add_sorting_to_zarr_group
-                del analyzer_root["sorting"]
-                add_sorting_to_zarr_group(analyzer.sorting, analyzer_root.create_group("sorting"))
-                need_consolidate = True
 
             # update recording field if is JSON
             if session_name != "ecephys_session":
@@ -281,12 +271,9 @@ if __name__ == "__main__":
                         del analyzer_root["recording"]
                         zarr_rec = np.array([recording_dict_mapped], dtype=object)
                         analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
-                    need_consolidate = True
+                        zarr.consolidate_metadata(analyzer_root.store)
                 else:
                     logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
-
-            if need_consolidate:
-                zarr.consolidate_metadata(analyzer_root.store)
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
