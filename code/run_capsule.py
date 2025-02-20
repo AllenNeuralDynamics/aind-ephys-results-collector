@@ -199,6 +199,7 @@ if __name__ == "__main__":
                 analyzer_format = "binary_folder"
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name
             shutil.copytree(f, analyzer_output_folder)
+            # we reload the analyzer to results to be able to append properties
             analyzer = si.load(analyzer_output_folder, load_extensions=False)
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
