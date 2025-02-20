@@ -187,6 +187,10 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
+            # we first check if the input posptrocessed folder is valid
+            # this will raise an Exception if it fails, preventing to copy
+            # to results
+            analyzer = si.load(f, load_extensions=False)
             if f.name.endswith(".zarr"):
                 recording_folder_name = f"{recording_name}.zarr"
                 analyzer_format = "zarr"
@@ -197,7 +201,7 @@ if __name__ == "__main__":
             shutil.copytree(f, analyzer_output_folder)
             analyzer = si.load(analyzer_output_folder, load_extensions=False)
         except:
-            logging.info(f"Spike sorting failed on {recording_name}. Skipping collection")
+            logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
             continue
         
         # add defaut_qc property
