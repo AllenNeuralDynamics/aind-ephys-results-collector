@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore")
 
 import os
 import sys
+import argparse
 from pathlib import Path
 import shutil
 import json
@@ -47,9 +48,23 @@ PIPELINE_VERSION = os.getenv("PIPELINE_VERSION")
 data_folder = Path("../data/")
 results_folder = Path("../results/")
 
+
+# Create an argument parser
+parser = argparse.ArgumentParser(description="Collect results from Ephys pipeline")
+
+process_name_group = parser.add_mutually_exclusive_group()
+process_name_help = "Process name to use in the derived data description."
+process_name_group.add_argument(
+    "--process-name", default="sorted", help=process_name_help
+)
+process_name_group.add_argument("static_process_name", nargs="?", help=process_name_help)
+
+
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
     t_collection_start = time.perf_counter()
+    args = parser.parse_args()
+    process_name = args.static_process_name or args.process_name
 
     # check if test
     if (data_folder / "postprocessing_pipeline_output_test").is_dir():
@@ -376,7 +391,6 @@ if __name__ == "__main__":
     else:
         subject_id = "000000"  # unknown
 
-    process_name = "sorted"
     if data_description is not None:
         try:
             upgrader = DataDescriptionUpgrade(data_description)
