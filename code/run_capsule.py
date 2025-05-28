@@ -320,7 +320,7 @@ if __name__ == "__main__":
                     recording_dict_mapped = json.loads(recording_dict_str)
                 elif pipeline_results_path is not None:
                     # here we need to resolve the recording path, make it relative to the pipeline results path
-                    pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / f"{recording_name}
+                    pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
                     recording_dict_mapped = resolve_extractor_path(
                         recording_dict=recording_dict,
                         base_folder=postprocessed_input_folder,
