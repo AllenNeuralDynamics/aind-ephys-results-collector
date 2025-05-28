@@ -96,7 +96,7 @@ def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
             else:
                 new_path = absolute_path
             logging.info(f"\t\tNew path: {new_path}")
-            set_value_in_extractor_dict(recording_dict, access_path, new_path)
+            set_value_in_extractor_dict(recording_dict, access_path, str(new_path))
     return recording_dict
 
 
