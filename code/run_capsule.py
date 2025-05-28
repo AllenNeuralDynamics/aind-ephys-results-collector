@@ -295,70 +295,48 @@ if __name__ == "__main__":
         # After a pipeline run, two additional subfolders are added, and the sorted asset will be mounted as: 
         # "root/data/{sorted_session_name}/postprocessed/{recording_name}.zarr"
         # we therefore need to replace "../../" with "../../../.." in order to have the anlyzer automatically find and reload the preprocessed recording
-        PIPELINE_MODE = os.getenv("AWS_BATCH_JOB_ID") is not None
+        AWS_BATCH_EXECUTOR = os.getenv("AWS_BATCH_JOB_ID") is not None
 
         # update analyzer properties
-        if analyzer_format == "binary_folder":
-            recording_json_path = analyzer_output_folder / "recording.json"
-            if recording_json_path.is_file() and session_name != "ecephys_session":
-                with open(recording_json_path, "r") as f:
-                    recording_dict = json.load(f)
+        import zarr
+        import numcodecs
+
+        analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
+
+        # update recording field if is JSON
+        if session_name != "ecephys_session":
+            recording_root = analyzer_root["recording"]
+            object_codec = None
+            if isinstance(recording_root.filters[0], numcodecs.JSON):
+                object_codec = numcodecs.JSON()
+            elif isinstance(recording_root.filters[0], numcodecs.Pickle):
+                object_codec = numcodecs.Pickle()
+            if object_codec is not None:
+                recording_dict = recording_root[0]
                 recording_dict_str = json.dumps(recording_dict, indent=4)
-                if "ecephys_session" in recording_dict_str:
-                    recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-                    if PIPELINE_MODE:
-                        recording_dict_str = recording_dict_str.replace("../../", "../../../../")
-                    elif pipeline_results_path is not None:
-                        # here we need to resolve the recording path, make it relative to the new results path
-                        pipeline_postprocessed_output = pipeline_results_path / "postprocessed" / recording_name
-                        recording_dict = resolve_extractor_path(
-                            recording_dict=recording_dict,
-                            base_folder=postprocessed_results_folder,
-                            relative_to=pipeline_postprocessed_output
-                        )
-                    else:
-                        # the collect capsule adds a postprocessed subfolder
-                        recording_dict_str = recording_dict_str.replace("../../", "../../../")
-                    recording_json_path.write_text(recording_dict_str, encoding="utf8")
-        else:
-            import zarr
-            import numcodecs
-
-            analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-
-            # update recording field if is JSON
-            if session_name != "ecephys_session":
-                recording_root = analyzer_root["recording"]
-                object_codec = None
-                if isinstance(recording_root.filters[0], numcodecs.JSON):
-                    object_codec = numcodecs.JSON()
-                elif isinstance(recording_root.filters[0], numcodecs.Pickle):
-                    object_codec = numcodecs.Pickle()
-                if object_codec is not None:
-                    recording_dict = recording_root[0]
-                    recording_dict_str = json.dumps(recording_dict, indent=4)
-                    if "ecephys_session" in recording_dict_str:
-                        recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-                        if PIPELINE_MODE:
-                            recording_dict_str = recording_dict_str.replace("../../", "../../../../")
-                        elif pipeline_results_path is not None:
-                            # here we need to resolve the recording path, make it relative to the new results path
-                            pipeline_postprocessed_output = pipeline_results_path / "postprocessed" / recording_name
-                            recording_dict = resolve_extractor_path(
-                                recording_dict=recording_dict,
-                                base_folder=postprocessed_results_folder,
-                                relative_to=pipeline_postprocessed_output
-                            )
-                        else:
-                            # the collect capsule adds a postprocessed subfolder
-                            recording_dict_str = recording_dict_str.replace("../../", "../../../")
-                        recording_dict_mapped = json.loads(recording_dict_str)
-                        del analyzer_root["recording"]
-                        zarr_rec = np.array([recording_dict_mapped], dtype=object)
-                        analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
-                        zarr.consolidate_metadata(analyzer_root.store)
+                recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+                if AWS_BATCH_EXECUTOR:
+                    recording_dict_str = recording_dict_str.replace("../../", "../../../../")
+                    recording_dict_mapped = json.loads(recording_dict_str)
+                elif pipeline_results_path is not None:
+                    # here we need to resolve the recording path, make it relative to the pipeline results path
+                    capsule_postprocessed_output = results_folder / f"postprocessed_{recording_name}.zarr"
+                    pipeline_postprocessed_output = pipeline_results_path / "postprocessed" / recording_name
+                    recording_dict_mapped = resolve_extractor_path(
+                        recording_dict=recording_dict,
+                        base_folder=capsule_postprocessed_output,
+                        relative_to=pipeline_postprocessed_output
+                    )
                 else:
-                    logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
+                    # the collect capsule adds a postprocessed subfolder
+                    recording_dict_str = recording_dict_str.replace("../../", "../../../")
+                    recording_dict_mapped = json.loads(recording_dict_str)
+                del analyzer_root["recording"]
+                zarr_rec = np.array([recording_dict_mapped], dtype=object)
+                analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
+                zarr.consolidate_metadata(analyzer_root.store)
+        else:
+            logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
 
     postprocessed_sorting_folders = [
         p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
