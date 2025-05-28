@@ -321,7 +321,7 @@ if __name__ == "__main__":
                 elif pipeline_results_path is not None:
                     # here we need to resolve the recording path, make it relative to the pipeline results path
                     capsule_postprocessed_output = results_folder / f"postprocessed_{recording_name}.zarr"
-                    pipeline_postprocessed_output = pipeline_results_path / "postprocessed" / recording_name
+                    pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_name
                     recording_dict_mapped = resolve_extractor_path(
                         recording_dict=recording_dict,
                         base_folder=capsule_postprocessed_output,
