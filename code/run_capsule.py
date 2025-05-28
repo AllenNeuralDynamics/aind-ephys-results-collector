@@ -13,6 +13,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import logging
+import zarr
+import numcodecs
 
 # SpikeInterface
 import spikeinterface as si
@@ -89,17 +91,15 @@ def remap_extractor_path(recording_dict, base_folder, relative_to=None):
         recording_dict["relative_paths"] = False
     for access_path, path in access_paths.items():
         # check if the absolute path is a symlink
-        logging.info(f"\tResolving path for {access_path[-1]} - {path}")
         absolute_path = base_folder / path
 
         if absolute_path.exists():
+            logging.info(f"\tResolving path for {access_path[-1]} - {path}")
             absolute_path = absolute_path.resolve()
             if relative_to is not None:
-                logging.info(f"\t\tMaking path relative to {relative_to}")
                 new_path = os.path.relpath(absolute_path, relative_to)
             else:
                 new_path = absolute_path
-            logging.info(f"\t\tNew path: {new_path}")
             set_value_in_extractor_dict(recording_dict, access_path, str(new_path))
     return recording_dict
 
@@ -301,45 +301,38 @@ if __name__ == "__main__":
         # we therefore need to replace "../../" with "../../../.." in order to have the anlyzer automatically find and reload the preprocessed recording
         AWS_BATCH_EXECUTOR = os.getenv("AWS_BATCH_JOB_ID") is not None
 
-        # update analyzer properties
-        import zarr
-        import numcodecs
-
         analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-
-        # update recording field if is JSON
-        if session_name != "ecephys_session":
-            recording_root = analyzer_root["recording"]
-            object_codec = None
-            if isinstance(recording_root.filters[0], numcodecs.JSON):
-                object_codec = numcodecs.JSON()
-            elif isinstance(recording_root.filters[0], numcodecs.Pickle):
-                object_codec = numcodecs.Pickle()
-            if object_codec is not None:
-                recording_dict = recording_root[0]
-                if pipeline_results_path is not None:
-                    # here we need to resolve the recording path, make it relative to the pipeline results path
-                    pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
-                elif AWS_BATCH_EXECUTOR:
-                    # here we need to add a new subfolder for the session name
-                    pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
-                else:
-                    # here we just add the postprocessed folder to the results folder
-                    pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
-                recording_dict_mapped = remap_extractor_path(
-                    recording_dict=recording_dict,
-                    base_folder=postprocessed_input_folder,
-                    relative_to=pipeline_postprocessed_output
-                )
-                # update the "ecephys_session" field in the recording_dict, if present
-                recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
-                recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-                recording_dict_mapped = json.loads(recording_dict_str)
-                # remove the old recording and add the new one
-                del analyzer_root["recording"]
-                zarr_rec = np.array([recording_dict_mapped], dtype=object)
-                analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
-                zarr.consolidate_metadata(analyzer_root.store)
+        recording_root = analyzer_root["recording"]
+        object_codec = None
+        if isinstance(recording_root.filters[0], numcodecs.JSON):
+            object_codec = numcodecs.JSON()
+        elif isinstance(recording_root.filters[0], numcodecs.Pickle):
+            object_codec = numcodecs.Pickle()
+        if object_codec is not None:
+            recording_dict = recording_root[0]
+            if pipeline_results_path is not None:
+                # here we need to resolve the recording path, make it relative to the pipeline results path
+                pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
+            elif AWS_BATCH_EXECUTOR:
+                # here we need to add a new subfolder for the session name
+                pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
+            else:
+                # here we just add the postprocessed folder to the results folder
+                pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
+            recording_dict_mapped = remap_extractor_path(
+                recording_dict=recording_dict,
+                base_folder=postprocessed_input_folder,
+                relative_to=pipeline_postprocessed_output
+            )
+            # update the "ecephys_session" field in the recording_dict, if present
+            recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
+            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+            recording_dict_mapped = json.loads(recording_dict_str)
+            # remove the old recording and add the new one
+            del analyzer_root["recording"]
+            zarr_rec = np.array([recording_dict_mapped], dtype=object)
+            analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
+            zarr.consolidate_metadata(analyzer_root.store)
         else:
             logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
 
