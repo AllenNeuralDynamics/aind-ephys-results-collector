@@ -92,7 +92,7 @@ def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
             absolute_path = absolute_path.resolve()
             if relative_to is not None:
                 logging.info(f"\t\tMaking path relative to {relative_to}")
-                new_path = absolute_path.relative_to(relative_to)
+                new_path = absolute_path.relative_to(relative_to, walk_up=True)
             else:
                 new_path = absolute_path
             logging.info(f"\t\tNew path: {new_path}")
