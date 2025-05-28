@@ -246,23 +246,23 @@ if __name__ == "__main__":
         for p in postprocessed_folder.iterdir()
         if "postprocessed" in p.name and p.is_dir()
     ]
-    for f in postprocessed_folders:
-        recording_name = f.stem[len("postprocessed_") :]
+    for postprocessed_input_folder in postprocessed_folders:
+        recording_name = postprocessed_input_folder.stem[len("postprocessed_") :]
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
             # we first check if the input postprocessed folder is valid
             # this will raise an Exception if it fails, preventing to copy
             # to results
-            analyzer = si.load(f, load_extensions=False)
-            if f.name.endswith(".zarr"):
+            analyzer = si.load(postprocessed_input_folder, load_extensions=False)
+            if postprocessed_input_folder.name.endswith(".zarr"):
                 recording_folder_name = f"{recording_name}.zarr"
                 analyzer_format = "zarr"
             else:
                 recording_folder_name = recording_name
                 analyzer_format = "binary_folder"
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name
-            shutil.copytree(f, analyzer_output_folder)
+            shutil.copytree(postprocessed_input_folder, analyzer_output_folder)
             # we reload the analyzer to results to be able to append properties
             analyzer = si.load(analyzer_output_folder, load_extensions=False)
         except:
@@ -320,11 +320,10 @@ if __name__ == "__main__":
                     recording_dict_mapped = json.loads(recording_dict_str)
                 elif pipeline_results_path is not None:
                     # here we need to resolve the recording path, make it relative to the pipeline results path
-                    capsule_postprocessed_output = results_folder / f"postprocessed_{recording_name}.zarr"
-                    pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_name
+                    pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / f"{recording_name}
                     recording_dict_mapped = resolve_extractor_path(
                         recording_dict=recording_dict,
-                        base_folder=capsule_postprocessed_output,
+                        base_folder=postprocessed_input_folder,
                         relative_to=pipeline_postprocessed_output
                     )
                 else:
@@ -337,13 +336,6 @@ if __name__ == "__main__":
                 zarr.consolidate_metadata(analyzer_root.store)
         else:
             logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
-
-    postprocessed_sorting_folders = [
-        p for p in postprocessed_folder.iterdir() if "postprocessed-sorting" in p.name and p.is_dir()
-    ]
-    for f in postprocessed_sorting_folders:
-        shutil.copytree(f, postprocessed_results_folder / f.name)
-
 
     # VISUALIZATION
     logging.info("Copying visualization outputs to results:")
