@@ -16,6 +16,7 @@ import logging
 
 # SpikeInterface
 import spikeinterface as si
+from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in_extractor_dict
 
 # AIND
 from aind_data_schema.core.data_description import (
@@ -59,12 +60,55 @@ process_name_group.add_argument(
 )
 process_name_group.add_argument("static_process_name", nargs="?", help=process_name_help)
 
+parser.add_argument(
+    "--pipeline-data-path",
+    default=None,
+    help="Path to the data folder containing the ecephys session.",
+)
+
+parser.add_argument(
+    "--pipeline-results-path",
+    default=None,
+    help="Path to the results folder where the collected results will be saved.",
+)
+
+
+def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
+    path_list_iter = extractor_dict_iterator(recording_dict)
+    access_paths = []
+    for path_iter in path_list_iter:
+        if "path" in path_iter.name:
+            access_path = path_iter.access_path
+            access_paths.append(access_path)
+    # make paths absolute
+    if relative_to is None:
+        recording_dict["relative_paths"] = False
+    for access_path in access_paths:
+        # check if the absolute path is a symlink
+        absolute_path = base_folder / access_path
+        logging.info(f"\tResolving path for {access_path} - {absolute_path}")
+
+        if absolute_path.is_symlink():
+            logging.info(f"\t\tResolving symlink for {access_path}")
+            # if it is a symlink, we need to resolve it to the actual path
+            absolute_path = absolute_path.resolve()
+            if relative_to is not None:
+                logging.info(f"\t\tMaking path relative to {relative_to}")
+                new_path = absolute_path.relative_to(relative_to)
+            else:
+                new_path = absolute_path
+            set_value_in_extractor_dict(recording_dict, access_path, new_path)
+    return recording_dict
+
+
 
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
     t_collection_start = time.perf_counter()
     args = parser.parse_args()
     process_name = args.static_process_name or args.process_name
+    pipeline_data_path = args.pipeline_data_path
+    pipeline_results_path = args.pipeline_results_path
 
     # check if test
     if (data_folder / "postprocessing_pipeline_output_test").is_dir():
@@ -160,14 +204,20 @@ if __name__ == "__main__":
         recording_name = preprocessed_file.stem[len("preprocessed_") :]
         recording_output_json_file = preprocessed_results_folder / recording_json_file_name
         logging.info(f"\t{recording_name}")
-        if session_name == "ecephys_session":
-            shutil.copy(preprocessed_file, recording_output_json_file)
-        else:
-            logging.info(f"\tRemapping preprocessed recording JSON path")
-            with open(preprocessed_file, "r") as f:
-                recording_dict = json.load(f)
-            recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
-            recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
+
+        logging.info(f"\tRemapping preprocessed recording JSON path")
+        with open(preprocessed_file, "r") as f:
+            recording_dict = json.load(f)
+
+        # running locally or on HPC, we need to resolve symlinks in the recording_dict
+        if pipeline_data_path is not None:
+            resolve_extractor_path(
+                recording_dict=recording_dict,
+                base_folder=data_folder,
+                relative_to=pipeline_data_path
+            )
+        recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
+        recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
 
     # MOTION
     motion_folders = [
@@ -202,7 +252,7 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
-            # we first check if the input posptrocessed folder is valid
+            # we first check if the input postprocessed folder is valid
             # this will raise an Exception if it fails, preventing to copy
             # to results
             analyzer = si.load(f, load_extensions=False)
@@ -259,6 +309,13 @@ if __name__ == "__main__":
                     recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
                     if PIPELINE_MODE:
                         recording_dict_str = recording_dict_str.replace("../../", "../../../../")
+                    elif pipeline_results_path is not None:
+                        # here we need to resolve the recording path, make it relative to the new results path
+                        recording_dict = resolve_extractor_path(
+                            recording_dict=recording_dict,
+                            base_folder=data_folder,
+                            relative_to=pipeline_results_path / 
+                        )
                     else:
                         # the collect capsule adds a postprocessed subfolder
                         recording_dict_str = recording_dict_str.replace("../../", "../../../")
