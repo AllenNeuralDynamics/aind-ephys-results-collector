@@ -77,7 +77,7 @@ def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
     path_list_iter = extractor_dict_iterator(recording_dict)
     access_paths = {}
     for path_iter in path_list_iter:
-        if "path" in path_iter.name:
+        if path_iter.name in ("file_path", "folder_path"):
             access_path = path_iter.access_path
             access_paths[access_path] = path_iter.value
     # make paths absolute
@@ -85,12 +85,10 @@ def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
         recording_dict["relative_paths"] = False
     for access_path, path in access_paths.items():
         # check if the absolute path is a symlink
+        logging.info(f"\tResolving path for {access_path[-1]} - {path}")
         absolute_path = base_folder / path
-        logging.info(f"\tResolving path for {access_path} - {absolute_path}")
 
-        if absolute_path.is_symlink():
-            logging.info(f"\t\tResolving symlink for {access_path}")
-            # if it is a symlink, we need to resolve it to the actual path
+        if absolute_path.exists():
             absolute_path = absolute_path.resolve()
             if relative_to is not None:
                 logging.info(f"\t\tMaking path relative to {relative_to}")
