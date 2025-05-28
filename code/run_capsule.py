@@ -75,17 +75,17 @@ parser.add_argument(
 
 def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
     path_list_iter = extractor_dict_iterator(recording_dict)
-    access_paths = []
+    access_paths = {}
     for path_iter in path_list_iter:
         if "path" in path_iter.name:
             access_path = path_iter.access_path
-            access_paths.append(access_path)
+            access_paths[access_path] = path_iter.value
     # make paths absolute
     if relative_to is None:
         recording_dict["relative_paths"] = False
-    for access_path in access_paths:
+    for access_path, path in access_paths.items():
         # check if the absolute path is a symlink
-        absolute_path = base_folder / access_path
+        absolute_path = base_folder / path
         logging.info(f"\tResolving path for {access_path} - {absolute_path}")
 
         if absolute_path.is_symlink():
@@ -97,6 +97,7 @@ def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
                 new_path = absolute_path.relative_to(relative_to)
             else:
                 new_path = absolute_path
+            logging.info(f"\t\tNew path: {new_path}")
             set_value_in_extractor_dict(recording_dict, access_path, new_path)
     return recording_dict
 
