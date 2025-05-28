@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
         # running locally or on HPC, we need to resolve symlinks in the recording_dict
         if pipeline_data_path is not None:
-            resolve_extractor_path(
+            recording_dict = resolve_extractor_path(
                 recording_dict=recording_dict,
                 base_folder=data_folder,
                 relative_to=pipeline_data_path
@@ -341,6 +341,14 @@ if __name__ == "__main__":
                         recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
                         if PIPELINE_MODE:
                             recording_dict_str = recording_dict_str.replace("../../", "../../../../")
+                        elif pipeline_results_path is not None:
+                            # here we need to resolve the recording path, make it relative to the new results path
+                            pipeline_postprocessed_output = pipeline_results_path / "postprocessed" / recording_name
+                            recording_dict = resolve_extractor_path(
+                                recording_dict=recording_dict,
+                                base_folder=postprocessed_results_folder,
+                                relative_to=pipeline_postprocessed_output
+                            )
                         else:
                             # the collect capsule adds a postprocessed subfolder
                             recording_dict_str = recording_dict_str.replace("../../", "../../../")
