@@ -73,7 +73,11 @@ parser.add_argument(
 )
 
 
-def resolve_extractor_path(recording_dict, base_folder, relative_to=None):
+def remap_extractor_path(recording_dict, base_folder, relative_to=None):
+    """
+    This function remaps the file_path and folder_path in the recording_dict
+    to be absolute or relative paths, resolving any symlinks if they exist.
+    """
     path_list_iter = extractor_dict_iterator(recording_dict)
     access_paths = {}
     for path_iter in path_list_iter:
@@ -210,7 +214,7 @@ if __name__ == "__main__":
 
         # running locally or on HPC, we need to resolve symlinks in the recording_dict
         if pipeline_data_path is not None:
-            recording_dict = resolve_extractor_path(
+            recording_dict = remap_extractor_path(
                 recording_dict=recording_dict,
                 base_folder=data_folder,
                 relative_to=pipeline_data_path
@@ -313,23 +317,25 @@ if __name__ == "__main__":
                 object_codec = numcodecs.Pickle()
             if object_codec is not None:
                 recording_dict = recording_root[0]
-                recording_dict_str = json.dumps(recording_dict, indent=4)
-                recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-                if AWS_BATCH_EXECUTOR:
-                    recording_dict_str = recording_dict_str.replace("../../", "../../../../")
-                    recording_dict_mapped = json.loads(recording_dict_str)
-                elif pipeline_results_path is not None:
+                if pipeline_results_path is not None:
                     # here we need to resolve the recording path, make it relative to the pipeline results path
                     pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
-                    recording_dict_mapped = resolve_extractor_path(
-                        recording_dict=recording_dict,
-                        base_folder=postprocessed_input_folder,
-                        relative_to=pipeline_postprocessed_output
-                    )
+                elif AWS_BATCH_EXECUTOR:
+                    # here we need to add a new subfolder for the session name
+                    pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
                 else:
-                    # the collect capsule adds a postprocessed subfolder
-                    recording_dict_str = recording_dict_str.replace("../../", "../../../")
-                    recording_dict_mapped = json.loads(recording_dict_str)
+                    # here we just add the postprocessed folder to the results folder
+                    pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
+                recording_dict_mapped = remap_extractor_path(
+                    recording_dict=recording_dict,
+                    base_folder=postprocessed_input_folder,
+                    relative_to=pipeline_postprocessed_output
+                )
+                # update the "ecephys_session" field in the recording_dict, if present
+                recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
+                recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+                recording_dict_mapped = json.loads(recording_dict_str)
+                # remove the old recording and add the new one
                 del analyzer_root["recording"]
                 zarr_rec = np.array([recording_dict_mapped], dtype=object)
                 analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
