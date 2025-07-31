@@ -4,7 +4,7 @@
 
 ### Description
 
-This simple capsule is designed to collect the results for the AIND pipeline. 
+This simple capsule is designed to collect the results for the AIND ecephys pipeline. 
 
 
 ### Inputs
@@ -20,7 +20,6 @@ The `data/` folder can include several outputs from upstream capsules, including
 In addition, the original session data (e.g., "ecephys_664438_2023-04-12_14-59-51") must also be available in the `data/` folder.
 
 
-
 ### Parameters
 
 The `code/run` script takes no arguments.
@@ -30,7 +29,7 @@ The `code/run` script takes no arguments.
 
 The output of this capsule in the `results/` folder contains the following folders:
 
-- `preprocessed`: collected JSON files from preprocessing
+- `preprocessed`: collected JSON and motion folders files from preprocessing
 - `spikesorted`: collected sorted folders from spike sorting
 - `postprocessed`: collected postprocessed folders from postprocessing
 - `curated`: collected curated folders from curation

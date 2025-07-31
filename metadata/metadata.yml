@@ -1,5 +1,8 @@
 metadata_version: 1
-name: aind-ephys-results-collector
-description: Basic structure of a capsule to be customized as needed.
+name: Collect Results Ecephys (dev)
+description: This simple is designed to collect the results for the AIND ecephys pipeline.
+tags:
+- ecephys
 authors:
 - name: AIND
+- name: Alessio Buccino

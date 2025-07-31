@@ -1,5 +1,6 @@
-# hash:sha256:2cd9649fc74dad892daa2a4972e78733be3238220c40a2d4c61fd6856d82bc1f
-FROM registry.codeocean.allenneuraldynamics-test.org/codeocean/jupyterlab:3.0.9-miniconda4.9.2-python3.8-ubuntu20.04
+# hash:sha256:69c72e1fad1e1491a4af46931061107337102657ab64dc99611f5dc348754596
+ARG REGISTRY_HOST
+FROM $REGISTRY_HOST/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -8,5 +9,9 @@ ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.13.66 \
-    numpy==1.24.3
+    aind-data-schema==1.0.0 \
+    aind-metadata-upgrader==0.0.18 \
+    spikeinterface[full]==0.101.1
+
+COPY postInstall /
+RUN /postInstall
