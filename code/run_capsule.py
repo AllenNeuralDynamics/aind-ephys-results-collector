@@ -378,8 +378,6 @@ if __name__ == "__main__":
         data_process_upgraded = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
         ephys_data_processes.append(data_process_upgraded)
 
-    print(f"# ephys data processes: {len(ephys_data_processes)}")
-
     processing = None
     if (ecephys_session_folder / "processing.json").is_file():
         with open(ecephys_session_folder / "processing.json", "r") as processing_file:
@@ -391,12 +389,8 @@ if __name__ == "__main__":
             logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
             existing_data_processes = []
 
-    print(f"# existing data processes: {len(existing_data_processes)}")
-
     all_data_process_dicts = existing_data_processes + ephys_data_processes
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
-    print(f"# all data processes: {len(all_data_processes)}")
-
 
     pipeline_code = Code(
         name="AIND ephys pipeline",
