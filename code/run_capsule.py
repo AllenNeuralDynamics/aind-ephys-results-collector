@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone, UTC
 import numpy as np
 import pandas as pd
 import logging
@@ -21,20 +21,24 @@ import spikeinterface as si
 from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in_extractor_dict
 
 # AIND
-from aind_data_schema.core.data_description import (
-    DataDescription,
-    DerivedDataDescription,
-    Organization,
-    Modality,
-    Modality,
-    Platform,
-    Funding,
-    DataLevel,
+from aind_data_schema_models.modalities import Modality
+from aind_data_schema_models.organizations import Organization
+from aind_data_schema_models.data_name_patterns import DataLevel, build_data_name
+
+from aind_data_schema.core.data_description import Funding, DataDescription
+from aind_data_schema.components.identifiers import Person
+from aind_data_schema.components.identifiers import Code
+from aind_data_schema.core.processing import (
+    DataProcess,
+    Processing,
+    ProcessName,
+    ProcessStage,
+    ResourceTimestamped,
+    ResourceUsage,
 )
-from aind_data_schema_models.pid_names import PIDName
-from aind_data_schema.core.processing import DataProcess, Processing, PipelineProcess
-from aind_metadata_upgrader.data_description_upgrade import DataDescriptionUpgrade
-from aind_metadata_upgrader.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
+
+from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
+from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 
 try:
     from aind_log_utils import log
@@ -44,8 +48,9 @@ except ImportError:
     HAVE_AIND_LOG_UTILS = False
 
 PIPELINE_MAINAINER = "Alessio Buccino"
-PIPELINE_URL = os.getenv("PIPELINE_URL")
-PIPELINE_VERSION = os.getenv("PIPELINE_VERSION")
+PIPELINE_URL = os.getenv("PIPELINE_URL", "")
+PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
+ADS_VERSION = "2.0.78"
 
 
 data_folder = Path("../data/")
@@ -367,56 +372,51 @@ if __name__ == "__main__":
     # PROCESSING
     logging.info("Generating processing metadata")
     ephys_data_processes = []
+    processing_upgrader = ProcessingV1V2()
     for json_file in data_processes_files:
         with open(json_file, "r") as data_process_file:
-            data_process_dict = json.load(data_process_file)
-        data_process_old = DataProcess.model_construct(**data_process_dict)
-        data_process = DataProcessUpgrade(data_process_old).upgrade()
-        ephys_data_processes.append(data_process)
+            data_process_data = json.load(data_process_file)
+        data_process_upgraded = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
+        ephys_data_processes.append(data_process_upgraded)
+
+    print(f"# ephys data processes: {len(ephys_data_processes)}")
 
     processing = None
     if (ecephys_session_folder / "processing.json").is_file():
         with open(ecephys_session_folder / "processing.json", "r") as processing_file:
-            processing_dict = json.load(processing_file)
+            processing_data = json.load(processing_file)
         try:
-            # Allow for parsing earlier versions of Processing files
-            processing_old = Processing.model_construct(**processing_dict)
-            # Protect against processing_pipeline.data_processes.outputs being None
-            if hasattr(processing_old, "processing_pipeline"):
-                processing_pipeline = processing_old.processing_pipeline
-                if "data_processes" in processing_pipeline:
-                    data_processes = processing_pipeline["data_processes"]
-                    for data_process in data_processes:
-                        if data_process["outputs"] is None:
-                            data_process["outputs"] = dict()
-            processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
-            processing.processing_pipeline.data_processes.extend(ephys_data_processes)
-            processing.processing_pipeline.pipeline_url = PIPELINE_URL
-            processing.processing_pipeline.pipeline_version = PIPELINE_VERSION
+            upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
+            existing_data_processes = upgraded_processing_data.get("data_processes", [])
         except Exception as e:
-            logging.info(f"Failed upgrading processing for error:\nCreating from scratch.")
-            processing = None
+            logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
+            existing_data_processes = []
 
-    if processing is None:
-        processing_pipeline = PipelineProcess(
-            data_processes=ephys_data_processes,
-            processor_full_name=PIPELINE_MAINAINER,
-            pipeline_url=PIPELINE_URL,
-            pipeline_version=PIPELINE_VERSION,
-        )
-        processing = Processing(processing_pipeline=processing_pipeline)
+    print(f"# existing data processes: {len(existing_data_processes)}")
 
-    with (results_folder / "processing.json").open("w") as f:
-        f.write(processing.model_dump_json(indent=3))
+    all_data_process_dicts = existing_data_processes + ephys_data_processes
+    all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
+    print(f"# all data processes: {len(all_data_processes)}")
+
+
+    pipeline_code = Code(
+        name="AIND ephys pipeline",
+        url=PIPELINE_URL,
+        version=PIPELINE_VERSION,
+    )
+    processing = Processing.create_with_sequential_process_graph(
+        pipelines=[pipeline_code],
+        data_processes=all_data_processes
+    )
+
+    processing.write_standard_file(output_directory=results_folder)
 
     # DATA_DESCRIPTION
     logging.info("Generating data_description metadata")
-    data_description = None
+    data_description_data = None
     if (ecephys_session_folder / "data_description.json").is_file():
         with open(ecephys_session_folder / "data_description.json", "r") as data_description_file:
-            data_description_json = json.load(data_description_file)
-        # Allow for parsing earlier versions of Processing files
-        data_description = DataDescription.model_construct(**data_description_json)
+            data_description_data = json.load(data_description_file)
 
     if (ecephys_session_folder / "subject.json").is_file():
         with open(ecephys_session_folder / "subject.json", "r") as subject_file:
@@ -425,45 +425,50 @@ if __name__ == "__main__":
     else:
         subject_id = "000000"  # unknown
 
-    if data_description is not None:
+    if data_description_data is not None:
         try:
-            upgrader = DataDescriptionUpgrade(data_description)
-            additional_required_kwargs = dict()
+            upgrader = DataDescriptionV1V2()
             # at least one investigator is required
-            if len(data_description.investigators) == 0:
-                additional_required_kwargs.update(dict(investigators=["Unknown"]))
-            if len(data_description.funding_source) == 0:
-                additional_required_kwargs.update(
-                    dict(funding_source=[Funding(funder=Organization.AI)])
+            if len(data_description_data.get("investigators", [])) == 0:
+                data_description_data.update(dict(investigators=[dict(name="unkwnown")]))
+            if len(data_description_data.get("funding_source", [])) == 0:
+                data_description_data.update(
+                    dict(funding_source=[dict(funder="AIND")])
                 )
-            upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS, **additional_required_kwargs)
-            derived_data_description = DerivedDataDescription.from_data_description(
-                upgraded_data_description, process_name=process_name
+            # fix formatting for old registry
+            institution = data_description_data["institution"]
+            if institution.get("registry"):
+                if isinstance(institution["registry"], str):
+                    if "ROR" in institution["registry"]:
+                        institution["registry"] = dict(abbreviation="ROR")
+            upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
+            DataDescription.model_validate(upgraded_data_description_data)
+            data_description = DataDescription(**upgraded_data_description_data)
+            derived_data_description = DataDescription.from_raw(
+                data_description, process_name=process_name
             )
         except Exception as e:
-            logging.info(f"Failed upgrading data description for error:\nCreating from scratch.")
+            logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
+            raise
             data_description = None
+
     if data_description is None:
         # make from scratch:
-        data_description_dict = {}
-        data_description_dict["creation_time"] = datetime.now()
-        data_description_dict["name"] = session_name
-        data_description_dict["institution"] = Organization.AIND
-        data_description_dict["data_level"] = DataLevel.RAW
-        data_description_dict["investigators"] = [PIDName(name="Unknown")]
-        data_description_dict["funding_source"] = [Funding(funder=Organization.AI)]
-        data_description_dict["modality"] = [Modality.ECEPHYS]
-        data_description_dict["platform"] = Platform.ECEPHYS
-        data_description_dict["subject_id"] = subject_id
-        data_description = DataDescription(**data_description_dict)
-
-        derived_data_description = DerivedDataDescription.from_data_description(
-            data_description=data_description, process_name=process_name
+        now = datetime.now(UTC)
+        derived_data_description = DataDescription(
+            name=build_data_name(subject_id, creation_datetime=now),
+            modalities=[Modality.ECEPHYS],
+            subject_id=subject_id,
+            creation_time=now,
+            institution=Organization.AIND,
+            investigators=[Person(name="unkwnown")],
+            funding_source=[Funding(funder=Organization.AI)],
+            project_name="unknown",
+            data_level=DataLevel.DERIVED,
         )
 
     # save processing files to output
-    with (results_folder / "data_description.json").open("w") as f:
-        f.write(derived_data_description.model_dump_json(indent=3))
+    derived_data_description.write_standard_file(output_directory=results_folder)
 
     # OTHER METADATA FILES
     logging.info("Propagating other metadata files")

@@ -1,15 +1,22 @@
-# hash:sha256:005691a572a166bec565eb63af397685e522b149363855f04e410a9461f6766f
+# hash:sha256:53866367596824be9055ed483c9b14c4e854afe16d290d49feef2c05b928e182
 ARG REGISTRY_HOST
-FROM $REGISTRY_HOST/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
+FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-
 ARG GIT_ASKPASS
-ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential=12.9ubuntu3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN conda install -y \
+        jupyterlab==4.4.6 \
+    && conda clean -ya
+
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==1.3.0 \
+    aind-data-schema==2.0.1 \
     aind-log-utils==0.2.3 \
-    aind-metadata-upgrader==0.0.24 \
+    aind-metadata-upgrader==0.0.28 \
     spikeinterface[full]==0.103.0
