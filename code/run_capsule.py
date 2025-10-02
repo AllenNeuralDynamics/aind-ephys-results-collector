@@ -213,18 +213,21 @@ if __name__ == "__main__":
         recording_output_json_file = preprocessed_results_folder / recording_json_file_name
         logging.info(f"\t{recording_name}")
 
-        logging.info(f"\tRemapping preprocessed recording JSON path")
         with open(preprocessed_file, "r") as f:
             recording_dict = json.load(f)
 
         # running locally or on HPC, we need to resolve symlinks in the recording_dict
         if pipeline_data_path is not None:
+            logging.info(f"\tRemapping preprocessed recording JSON paths relative to {pipeline_data_path}")
             recording_dict = remap_extractor_path(
                 recording_dict=recording_dict,
                 base_folder=data_folder,
                 relative_to=pipeline_data_path
             )
-        recording_dict_str = json.dumps(recording_dict, indent=4).replace("ecephys_session", session_name)
+        recording_dict_str = json.dumps(recording_dict, indent=4)
+        if "ecephys_session" in recording_dict_str:
+            logging.info(f"\tRemapping preprocessed recording: 'ecephys_session' -> '{session_name}'")
+            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
         recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
 
     # MOTION
@@ -257,6 +260,7 @@ if __name__ == "__main__":
     ]
     for postprocessed_input_folder in postprocessed_folders:
         recording_name = postprocessed_input_folder.stem[len("postprocessed_") :]
+        recording_folder_name = f"{recording_name}.zarr"
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
@@ -264,12 +268,6 @@ if __name__ == "__main__":
             # this will raise an Exception if it fails, preventing to copy
             # to results
             analyzer = si.load(postprocessed_input_folder, load_extensions=False)
-            if postprocessed_input_folder.name.endswith(".zarr"):
-                recording_folder_name = f"{recording_name}.zarr"
-                analyzer_format = "zarr"
-            else:
-                recording_folder_name = recording_name
-                analyzer_format = "binary_folder"
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name
             shutil.copytree(postprocessed_input_folder, analyzer_output_folder)
             # we reload the analyzer to results to be able to append properties
@@ -324,6 +322,7 @@ if __name__ == "__main__":
             else:
                 # here we just add the postprocessed folder to the results folder
                 pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
+            logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
             recording_dict_mapped = remap_extractor_path(
                 recording_dict=recording_dict,
                 base_folder=postprocessed_input_folder,
