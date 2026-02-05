@@ -428,12 +428,6 @@ if __name__ == "__main__":
                 data_description_data.update(
                     dict(funding_source=[dict(funder="AIND")])
                 )
-            # fix formatting for old registry
-            institution = data_description_data["institution"]
-            if institution.get("registry"):
-                if isinstance(institution["registry"], str):
-                    if "ROR" in institution["registry"]:
-                        institution["registry"] = dict(abbreviation="ROR")
             upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
             DataDescription.model_validate(upgraded_data_description_data)
             data_description = DataDescription(**upgraded_data_description_data)
