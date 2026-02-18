@@ -10,6 +10,7 @@ import shutil
 import json
 import time
 from datetime import datetime, timezone, UTC
+from packaging.version import parse
 import numpy as np
 import pandas as pd
 import logging
@@ -50,7 +51,7 @@ except ImportError:
 PIPELINE_MAINAINER = "Alessio Buccino"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = "2.0.78"
+ADS_VERSION = "2.4.0"
 
 
 data_folder = Path("../data/")
@@ -371,23 +372,24 @@ if __name__ == "__main__":
     # PROCESSING
     logging.info("Generating processing metadata")
     ephys_data_processes = []
-    processing_upgrader = ProcessingV1V2()
     for json_file in data_processes_files:
         with open(json_file, "r") as data_process_file:
             data_process_data = json.load(data_process_file)
-        data_process_upgraded = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
-        ephys_data_processes.append(data_process_upgraded)
+            ephys_data_processes.append(data_process_data)
 
-    processing = None
     if (ecephys_session_folder / "processing.json").is_file():
         with open(ecephys_session_folder / "processing.json", "r") as processing_file:
             processing_data = json.load(processing_file)
-        try:
-            upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
-            existing_data_processes = upgraded_processing_data.get("data_processes", [])
-        except Exception as e:
-            logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
-            existing_data_processes = []
+        if parse(processing_data["schema_version"]) < parse("2.0.0"):
+            try:
+                processing_upgrader = ProcessingV1V2()
+                upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
+                existing_data_processes = upgraded_processing_data.get("data_processes", [])
+            except Exception as e:
+                logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
+                existing_data_processes = []
+        else:
+            existing_data_processes = processing["data_processes"]
 
     all_data_process_dicts = existing_data_processes + ephys_data_processes
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
@@ -419,25 +421,30 @@ if __name__ == "__main__":
         subject_id = "000000"  # unknown
 
     if data_description_data is not None:
-        try:
-            upgrader = DataDescriptionV1V2()
-            # at least one investigator is required
-            if len(data_description_data.get("investigators", [])) == 0:
-                data_description_data.update(dict(investigators=[dict(name="unkwnown")]))
-            if len(data_description_data.get("funding_source", [])) == 0:
-                data_description_data.update(
-                    dict(funding_source=[dict(funder="AIND")])
+        if parse(data_description_data["schema_version"]) < parse("2.0.0"):
+            try:
+                upgrader = DataDescriptionV1V2()
+                # at least one investigator is required
+                if len(data_description_data.get("investigators", [])) == 0:
+                    data_description_data.update(dict(investigators=[dict(name="unkwnown")]))
+                if len(data_description_data.get("funding_source", [])) == 0:
+                    data_description_data.update(
+                        dict(funding_source=[dict(funder="AIND")])
+                    )
+                upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
+                DataDescription.model_validate(upgraded_data_description_data)
+                data_description = DataDescription(**upgraded_data_description_data)
+                derived_data_description = DataDescription.from_raw(
+                    data_description, process_name=process_name
                 )
-            upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
-            DataDescription.model_validate(upgraded_data_description_data)
-            data_description = DataDescription(**upgraded_data_description_data)
+            except Exception as e:
+                logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
+                data_description = None
+        else:
+            data_description = DataDescription(**data_description_data)
             derived_data_description = DataDescription.from_raw(
                 data_description, process_name=process_name
             )
-        except Exception as e:
-            logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
-            raise
-            data_description = None
 
     if data_description is None:
         # make from scratch:
