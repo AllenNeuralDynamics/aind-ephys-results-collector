@@ -375,7 +375,6 @@ if __name__ == "__main__":
     ephys_data_processes = []
     for json_file in data_process_files:
         stream_name = "_".join(json_file.stem.split("_")[3:])
-        print(stream_name)
         with open(json_file, "r") as data_process_file:
             data_process_data = json.load(data_process_file)
 
@@ -425,6 +424,7 @@ if __name__ == "__main__":
         duplicated_names = list(np.array(process_names)[duplicate_indices])
         logging.info(f"\tDuplicated names: {duplicated_names}")
         offset = 1
+        new_data_process_dicts = []
         for process in all_data_process_dicts:
             if process["name"] in duplicated_names:
                 existing_name = process["name"]
@@ -432,6 +432,11 @@ if __name__ == "__main__":
                 process["name"] = new_name
                 offset += 1
                 logging.info(f"\tUpdated {existing_name} to {new_name}")
+            new_data_process_dicts.append(process)
+        all_data_process_dicts = new_data_process_dicts
+
+    new_process_names = [d["name"] for d in all_data_process_dicts]
+    logging.info(f"Number of processes after fix: {len(new_process_names)} (unique: {len(set(new_process_names))})")
 
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
 
