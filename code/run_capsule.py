@@ -374,15 +374,18 @@ if __name__ == "__main__":
     processing_upgrader = ProcessingV1V2()
     ephys_data_processes = []
     for json_file in data_process_files:
-        stream_name = json_file.stem[len("data_process_"):]
+        stream_name = "_".join(json_file.stem.split("_")[2:])
+        print(stream_name)
         with open(json_file, "r") as data_process_file:
             data_process_data = json.load(data_process_file)
+
+            if "code" not in data_process_data:
+                # The 'code' field was added in 2.0. This is mainly used for testing with previously generated 1.0 data processes
+                data_process_data = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
+
             # Append stream name to make data processes unique
             data_process_name = data_process_data["name"]
-            data_process_data["name"] = f"{data_process_name}_{stream_name}"
-            # The 'code' field was added in 2.0. This is mainly used for testing with previously generated 1.0 data processes
-            if "code" not in data_process_data:
-                data_process_data = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
+            data_process_data["name"] = f"{data_process_name} - {stream_name}"
             ephys_data_processes.append(data_process_data)
 
     if (ecephys_session_folder / "processing.json").is_file():
@@ -411,6 +414,10 @@ if __name__ == "__main__":
                 logging.info(f"Failed to validate existing data processes: {failed_process_names}")
 
     all_data_process_dicts = existing_data_processes + ephys_data_processes
+
+    process_names = [d["name"] for d in all_data_process_dicts]
+    logging.info(f"Number of processes: {len(process_names)} (unique: {len(set(process_names))})")
+
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
 
     pipeline_code = Code(
