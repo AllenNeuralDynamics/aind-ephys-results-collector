@@ -432,6 +432,7 @@ if __name__ == "__main__":
                 process["name"] = new_name
                 offset += 1
                 logging.info(f"\tUpdated {existing_name} to {new_name}")
+            logging.info(process["name"])
             new_data_process_dicts.append(process)
         all_data_process_dicts = new_data_process_dicts
 
