@@ -374,8 +374,12 @@ if __name__ == "__main__":
     processing_upgrader = ProcessingV1V2()
     ephys_data_processes = []
     for json_file in data_process_files:
+        stream_name = json_file.stem[len("data_process_"):]
         with open(json_file, "r") as data_process_file:
             data_process_data = json.load(data_process_file)
+            # Append stream name to make data processes unique
+            data_process_name = data_process_data["name"]
+            data_process_data["name"] = f"{data_process_name}_{stream_name}"
             # The 'code' field was added in 2.0. This is mainly used for testing with previously generated 1.0 data processes
             if "code" not in data_process_data:
                 data_process_data = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
