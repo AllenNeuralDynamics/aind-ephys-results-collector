@@ -396,7 +396,7 @@ if __name__ == "__main__":
             existing_data_processes = []
             # validate existing data_processes
             failed_data_processes = []
-            for data_process in processing["data_processes"]:
+            for data_process in processing_data["data_processes"]:
                 try:
                     DataProcess.model_validate(data_process)
                     existing_data_processes.append(data_process)
