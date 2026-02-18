@@ -26,9 +26,9 @@ from aind_data_schema_models.modalities import Modality
 from aind_data_schema_models.organizations import Organization
 from aind_data_schema_models.data_name_patterns import DataLevel, build_data_name
 
-from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.components.identifiers import Person
 from aind_data_schema.components.identifiers import Code
+from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.core.processing import (
     DataProcess,
     Processing,
@@ -137,10 +137,10 @@ if __name__ == "__main__":
             visualization_folder,
         ]
 
-        data_processes_files = []
+        data_process_files = []
         for test_folder_name in test_folders:
             test_folder = data_folder / test_folder_name
-            data_processes_files.extend(
+            data_process_files.extend(
                 [p for p in test_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]
             )
     else:
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         curated_folder = data_folder
         unit_classifier_folder = data_folder
         visualization_folder = data_folder
-        data_processes_files = [
+        data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
         ]
 
@@ -371,10 +371,14 @@ if __name__ == "__main__":
 
     # PROCESSING
     logging.info("Generating processing metadata")
+    processing_upgrader = ProcessingV1V2()
     ephys_data_processes = []
-    for json_file in data_processes_files:
+    for json_file in data_process_files:
         with open(json_file, "r") as data_process_file:
             data_process_data = json.load(data_process_file)
+            # The 'code' field was added in 2.0. This is mainly used for testing with previously generated 1.0 data processes
+            if "code" not in data_process_data:
+                data_process_data = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
             ephys_data_processes.append(data_process_data)
 
     if (ecephys_session_folder / "processing.json").is_file():
@@ -382,14 +386,25 @@ if __name__ == "__main__":
             processing_data = json.load(processing_file)
         if parse(processing_data["schema_version"]) < parse("2.0.0"):
             try:
-                processing_upgrader = ProcessingV1V2()
                 upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
                 existing_data_processes = upgraded_processing_data.get("data_processes", [])
+                logging.info(f"Upgraded data processes to {ADS_VERSION}.")
             except Exception as e:
                 logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
                 existing_data_processes = []
         else:
-            existing_data_processes = processing["data_processes"]
+            existing_data_processes = []
+            # validate existing data_processes
+            failed_data_processes = []
+            for data_process in processing["data_processes"]:
+                try:
+                    DataProcess.model_validate(data_process)
+                    existing_data_processes.append(data_process)
+                except Exception as e:
+                    failed_data_processes.append(data_process)
+            if len(failed_data_processes) > 0:
+                failed_process_names = [d["name"] for d  in failed_data_processes]
+                logging.info(f"Failed to validate existing data processes: {failed_process_names}")
 
     all_data_process_dicts = existing_data_processes + ephys_data_processes
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
@@ -403,7 +418,6 @@ if __name__ == "__main__":
         pipelines=[pipeline_code],
         data_processes=all_data_processes
     )
-
     processing.write_standard_file(output_directory=results_folder)
 
     # DATA_DESCRIPTION
@@ -433,6 +447,7 @@ if __name__ == "__main__":
                     )
                 upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
                 DataDescription.model_validate(upgraded_data_description_data)
+                logging.info(f"Upgraded data processes to {ADS_VERSION}.")
                 data_description = DataDescription(**upgraded_data_description_data)
                 derived_data_description = DataDescription.from_raw(
                     data_description, process_name=process_name
@@ -441,10 +456,15 @@ if __name__ == "__main__":
                 logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
                 data_description = None
         else:
-            data_description = DataDescription(**data_description_data)
-            derived_data_description = DataDescription.from_raw(
-                data_description, process_name=process_name
-            )
+            try:
+                DataDescription.model_validate(data_description_data)
+                data_description = DataDescription(**data_description_data)
+                derived_data_description = DataDescription.from_raw(
+                    data_description, process_name=process_name
+                )
+            except Exception as e:
+                logging.info(f"Failed to instantiate data description: {e}\nCreating from scratch.")
+                data_description = None
 
     if data_description is None:
         # make from scratch:
