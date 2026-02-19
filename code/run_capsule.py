@@ -49,6 +49,7 @@ except ImportError:
     HAVE_AIND_LOG_UTILS = False
 
 PIPELINE_MAINAINER = "Alessio Buccino"
+PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
 ADS_VERSION = "2.4.0"
@@ -411,8 +412,11 @@ if __name__ == "__main__":
             # Append stream name to make data processes unique
             data_process_name = data_process_data["name"]
             data_process_data["name"] = f"{data_process_name} - {stream_name}"
+            data_process_data["pipeline_name"] = PIPELINE_NAME
             ephys_data_processes.append(data_process_data)
 
+    existing_data_processes = []
+    existing_pipelines = []
     if (ecephys_session_folder / "processing.json").is_file():
         with open(ecephys_session_folder / "processing.json", "r") as processing_file:
             processing_data = json.load(processing_file)
@@ -427,9 +431,7 @@ if __name__ == "__main__":
                 logging.info(f"Upgraded data processes to {ADS_VERSION}.")
             except Exception as e:
                 logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
-                existing_data_processes = []
         else:
-            existing_data_processes = []
             # validate existing data_processes
             failed_data_processes = []
             for data_process in processing_data["data_processes"]:
@@ -441,6 +443,7 @@ if __name__ == "__main__":
             if len(failed_data_processes) > 0:
                 failed_process_names = [d["name"] for d  in failed_data_processes]
                 logging.info(f"Failed to validate existing data processes: {failed_process_names}")
+            existing_pipelines = processing_data["pipelines"]
 
 
     all_data_process_dicts = existing_data_processes + ephys_data_processes
@@ -448,13 +451,14 @@ if __name__ == "__main__":
     all_data_process_dicts = fix_process_names(all_data_process_dicts)
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
 
-    pipeline_code = Code(
-        name="AIND ephys pipeline",
+    ephys_pipeline = Code(
+        name=PIPELINE_NAME,
         url=PIPELINE_URL,
         version=PIPELINE_VERSION,
     )
+    pipelines = existing_pipelines + [ephys_pipeline]
     processing = Processing.create_with_sequential_process_graph(
-        pipelines=[pipeline_code],
+        pipelines=pipelines,
         data_processes=all_data_processes
     )
     processing.write_standard_file(output_directory=results_folder)
