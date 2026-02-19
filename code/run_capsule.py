@@ -110,6 +110,32 @@ def remap_extractor_path(recording_dict, base_folder, relative_to=None):
     return recording_dict
 
 
+def fix_process_names(process_dicts: list):
+    """
+    This function ensures that process names are unique.
+    """
+    process_names = [d["name"] for d in process_dicts]
+
+    if len(process_names) != len(set(process_names)):
+        logging.info(f"Non-unique process names!")
+        unique_names, counts = np.unique(process_names, return_counts=True)
+        duplicated_names = list(unique_names[np.nonzero(counts > 1)])
+        logging.info(f"\tDuplicated names: {duplicated_names}")
+        offset = 1
+        new_process_dicts = []
+        for process in process_dicts:
+            if process["name"] in duplicated_names:
+                existing_name = process["name"]
+                new_name = f"{existing_name}_{offset}"
+                process["name"] = new_name
+                logging.info(f"\tUpdated {existing_name} to {new_name}")
+                offset += 1
+            new_process_dicts.append(process)
+        return new_process_dicts
+    else:
+        return process_dicts
+
+
 
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
@@ -391,6 +417,10 @@ if __name__ == "__main__":
         with open(ecephys_session_folder / "processing.json", "r") as processing_file:
             processing_data = json.load(processing_file)
         if parse(processing_data["schema_version"]) < parse("2.0.0"):
+            logging.warning(
+                "DEPRECATION: processing.json is aind-data-schema 1.0 and will stop being supported in April 2026. "
+                "Please upgrade to aind-data-schema v2.0."
+            )
             try:
                 upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
                 existing_data_processes = upgraded_processing_data.get("data_processes", [])
@@ -412,33 +442,10 @@ if __name__ == "__main__":
                 failed_process_names = [d["name"] for d  in failed_data_processes]
                 logging.info(f"Failed to validate existing data processes: {failed_process_names}")
 
+
     all_data_process_dicts = existing_data_processes + ephys_data_processes
-
-    process_names = [d["name"] for d in all_data_process_dicts]
-    logging.info(f"Number of processes: {len(process_names)} (unique: {len(set(process_names))})")
-
-    if len(process_names) != len(set(process_names)):
-        logging.info(f"Non-unique process names!")
-        unique_names, counts = np.unique(process_names, return_counts=True)
-        duplicate_indices, = np.nonzero(counts > 1)
-        duplicated_names = list(np.array(process_names)[duplicate_indices])
-        logging.info(f"\tDuplicated names: {duplicated_names}")
-        offset = 1
-        new_data_process_dicts = []
-        for process in all_data_process_dicts:
-            if process["name"] in duplicated_names:
-                existing_name = process["name"]
-                new_name = f"{existing_name}_{offset}"
-                process["name"] = new_name
-                offset += 1
-                logging.info(f"\tUpdated {existing_name} to {new_name}")
-            logging.info(process["name"])
-            new_data_process_dicts.append(process)
-        all_data_process_dicts = new_data_process_dicts
-
-    new_process_names = [d["name"] for d in all_data_process_dicts]
-    logging.info(f"Number of processes after fix: {len(new_process_names)} (unique: {len(set(new_process_names))})")
-
+    # Ensure process names are unique
+    all_data_process_dicts = fix_process_names(all_data_process_dicts)
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
 
     pipeline_code = Code(
@@ -468,6 +475,10 @@ if __name__ == "__main__":
 
     if data_description_data is not None:
         if parse(data_description_data["schema_version"]) < parse("2.0.0"):
+            logging.warning(
+                "DEPRECATION: data_description.json is aind-data-schema 1.0 and will stop being supported in April 2026. "
+                "Please upgrade to aind-data-schema v2.0."
+            )
             try:
                 upgrader = DataDescriptionV1V2()
                 # at least one investigator is required
