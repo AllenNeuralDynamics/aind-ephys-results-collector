@@ -477,6 +477,7 @@ if __name__ == "__main__":
     else:
         subject_id = "000000"  # unknown
 
+    data_description = None
     if data_description_data is not None:
         if parse(data_description_data["schema_version"]) < parse("2.0.0"):
             logging.warning(
@@ -501,7 +502,6 @@ if __name__ == "__main__":
                 )
             except Exception as e:
                 logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
-                data_description = None
         else:
             try:
                 DataDescription.model_validate(data_description_data)
@@ -511,7 +511,6 @@ if __name__ == "__main__":
                 )
             except Exception as e:
                 logging.info(f"Failed to instantiate data description: {e}\nCreating from scratch.")
-                data_description = None
 
     if data_description is None:
         # make from scratch:
