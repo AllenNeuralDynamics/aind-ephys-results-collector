@@ -536,7 +536,10 @@ if __name__ == "__main__":
     metadata_json_files = [
         p
         for p in ecephys_session_folder.iterdir()
-        if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name and "job" not in p.name
+        if p.suffix == ".json" and "processing" not in p.name 
+        and "data_description" not in p.name 
+        and "job" not in p.name
+        and "metadata.nd" not in p.name
     ]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
