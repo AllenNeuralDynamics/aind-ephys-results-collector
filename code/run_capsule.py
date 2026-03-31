@@ -277,17 +277,17 @@ if __name__ == "__main__":
         # add labels
         unit_labels_file = curated_folder / f"unit_labels_{recording_name}.csv"
         if unit_labels_file.is_file():
-            unit_labels_df = pd.read_csv(unit_classifier_file, index_col=False)
-            if len(unit_classifier_df) == len(analyzer.unit_ids):
+            unit_labels_df = pd.read_csv(unit_labels_file, index_col=False)
+            if len(unit_labels_df) == len(analyzer.unit_ids):
                 # TODO: check dtypes
                 for label in unit_labels_df.columns:
                     values = unit_labels_df[label]
                     analyzer.set_sorting_property(label, unit_labels_df[label], save=True)
                 # backward-compatibility
                 if "unitrefine_label" in unit_labels_df.columns:
-                    decoder_label = np.array(unit_classifier_df["unitrefine_label"].values).astype("str")
+                    decoder_label = np.array(unit_labels_df["unitrefine_label"].values).astype("str")
                     analyzer.set_sorting_property("decoder_label", decoder_label, save=True)
-                    decoder_probability = np.array(unit_classifier_df["unitrefine_probability"].values).astype(float)
+                    decoder_probability = np.array(unit_labels_df["unitrefine_probability"].values).astype(float)
                     analyzer.set_sorting_property("decoder_probability", decoder_probability, save=True)
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
