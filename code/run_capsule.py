@@ -226,8 +226,6 @@ if __name__ == "__main__":
     preprocessed_results_folder.mkdir(exist_ok=True)
     postprocessed_results_folder = results_folder / "postprocessed"
     postprocessed_results_folder.mkdir(exist_ok=True)
-    curated_results_folder = results_folder / "curated"
-    curated_results_folder.mkdir(exist_ok=True)
 
     # PREPROCESSED
     logging.info("Copying preprocessed folders to results:")
@@ -305,13 +303,13 @@ if __name__ == "__main__":
             continue
         
         # add defaut_qc property
-        default_qc = None
-        decoder_label = None
+        has_curation = False
         curation_file = curated_folder / f"qc_{recording_name}.npy"
         if curation_file.is_file():
             default_qc = np.load(curation_file)
             if len(default_qc) == len(analyzer.unit_ids):
                 analyzer.set_sorting_property("default_qc", default_qc, save=True)
+                has_curation = True
         # add classifier
         unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
         if unit_classifier_file.is_file():
@@ -321,8 +319,12 @@ if __name__ == "__main__":
                 analyzer.set_sorting_property("decoder_label", decoder_label, save=True)
                 decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
                 analyzer.set_sorting_property("decoder_probability", decoder_probability, save=True)
+                has_curation = True
 
-        _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
+        if has_curation:
+            curated_results_folder = results_folder / "curated"
+            curated_results_folder.mkdir(exist_ok=True)
+            _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
         # If the collect results runs in a pipeline, we need to further modify the mappings of the preprocessed recording in the analyzer.
         # For the postprocessed capsule, the analyzer is in:
