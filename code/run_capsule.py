@@ -291,7 +291,9 @@ if __name__ == "__main__":
                     analyzer.set_sorting_property("decoder_probability", decoder_probability, save=True)
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
-        # TODO: make a curation.json in "curation"
+        curation_json_files = [p for p in curated_folder.iterdir() if p.name.startswith("curation_")]
+        for curation_json_file in curation_json_files:
+            shutil.copyfile(curation_json_file, curated_results_folder / recording_name / "curation.json")
 
         # If the collect results runs in a pipeline, we need to further modify the mappings of the preprocessed recording in the analyzer.
         # For the postprocessed capsule, the analyzer is in:
