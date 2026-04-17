@@ -280,7 +280,7 @@ if __name__ == "__main__":
         logging.info(f"\t{recording_name}")
         shutil.copytree(f, spikesorted_results_folder / recording_name)
     spikesorted_motion_folders = [
-        p for p in spikesorted_folder.iterdir() p.name.startswith("spikesortedmotion_") and p.is_dir()
+        p for p in spikesorted_folder.iterdir() if p.name.startswith("spikesortedmotion_") and p.is_dir()
     ]
     if len(spikesorted_motion_folders) > 0:
         logging.info("Copying spikesorted motion folders to results:")
