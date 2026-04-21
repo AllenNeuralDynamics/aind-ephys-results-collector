@@ -281,6 +281,7 @@ if __name__ == "__main__":
             if len(unit_labels_df) == len(analyzer.unit_ids):
                 # TODO: check dtypes
                 for label in unit_labels_df.columns:
+                    logging.info("f\t Adding label {label} to analyzer")
                     values = unit_labels_df[label]
                     analyzer.set_sorting_property(label, unit_labels_df[label], save=True)
                 # backward-compatibility
