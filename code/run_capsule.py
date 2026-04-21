@@ -1,6 +1,6 @@
 import warnings
 
-warnings.filterwarnings("ignore")
+# warnings.filterwarnings("ignore")
 
 import os
 import sys
