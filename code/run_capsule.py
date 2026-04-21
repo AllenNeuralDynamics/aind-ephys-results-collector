@@ -277,14 +277,14 @@ if __name__ == "__main__":
         # add labels
         unit_labels_file = curated_folder / f"unit_labels_{recording_name}.csv"
         if unit_labels_file.is_file():
-            unit_labels_df = pd.read_csv(unit_labels_file, index_col=False).convert_dtypes()
+            unit_labels_df = pd.read_csv(unit_labels_file, index_col=False)
             if len(unit_labels_df) == len(analyzer.unit_ids):
                 # TODO: check dtypes
                 for label in unit_labels_df.columns:
                     values = unit_labels_df[label].values
                     logging.info(f"\t Adding label {label} to analyzer.")
                     if "_label" in label:
-                        values = values.astype("str")
+                        values = np.array(values).astype("str")
                     analyzer.set_sorting_property(label, values, save=True)
                     # backward-compatibility
                     if label == "unitrefine_label":
