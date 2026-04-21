@@ -1,6 +1,6 @@
 import warnings
 
-# warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore")
 
 import os
 import sys
@@ -282,7 +282,9 @@ if __name__ == "__main__":
                 # TODO: check dtypes
                 for label in unit_labels_df.columns:
                     values = unit_labels_df[label].values
-                    logging.info(f"\t Adding label {label} to analyzer. Dtype {values.dtype}")
+                    logging.info(f"\t Adding label {label} to analyzer.")
+                    if "_label" in label:
+                        values = values.astype("str")
                     analyzer.set_sorting_property(label, values, save=True)
                     # backward-compatibility
                     if label == "unitrefine_label":
