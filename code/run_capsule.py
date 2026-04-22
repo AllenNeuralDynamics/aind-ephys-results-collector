@@ -279,7 +279,6 @@ if __name__ == "__main__":
         if unit_labels_file.is_file():
             unit_labels_df = pd.read_csv(unit_labels_file, index_col=False)
             if len(unit_labels_df) == len(analyzer.unit_ids):
-                # TODO: check dtypes
                 for label in unit_labels_df.columns:
                     values = unit_labels_df[label].values
                     logging.info(f"\t Adding label {label} to analyzer.")
