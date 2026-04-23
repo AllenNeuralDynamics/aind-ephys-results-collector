@@ -10,6 +10,7 @@ import shutil
 import json
 import time
 from datetime import datetime, timezone, UTC
+from packaging.version import parse
 import numpy as np
 import pandas as pd
 import logging
@@ -25,9 +26,9 @@ from aind_data_schema_models.modalities import Modality
 from aind_data_schema_models.organizations import Organization
 from aind_data_schema_models.data_name_patterns import DataLevel, build_data_name
 
-from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.components.identifiers import Person
 from aind_data_schema.components.identifiers import Code
+from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.core.processing import (
     DataProcess,
     Processing,
@@ -48,9 +49,10 @@ except ImportError:
     HAVE_AIND_LOG_UTILS = False
 
 PIPELINE_MAINAINER = "Alessio Buccino"
+PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = "2.0.78"
+ADS_VERSION = "2.4.0"
 
 
 data_folder = Path("../data/")
@@ -109,6 +111,32 @@ def remap_extractor_path(recording_dict, base_folder, relative_to=None):
     return recording_dict
 
 
+def fix_process_names(process_dicts: list):
+    """
+    This function ensures that process names are unique.
+    """
+    process_names = [d["name"] for d in process_dicts]
+
+    if len(process_names) != len(set(process_names)):
+        logging.info(f"Non-unique process names!")
+        unique_names, counts = np.unique(process_names, return_counts=True)
+        duplicated_names = list(unique_names[np.nonzero(counts > 1)])
+        logging.info(f"\tDuplicated names: {duplicated_names}")
+        offset = 1
+        new_process_dicts = []
+        for process in process_dicts:
+            if process["name"] in duplicated_names:
+                existing_name = process["name"]
+                new_name = f"{existing_name}_{offset}"
+                process["name"] = new_name
+                logging.info(f"\tUpdated {existing_name} to {new_name}")
+                offset += 1
+            new_process_dicts.append(process)
+        return new_process_dicts
+    else:
+        return process_dicts
+
+
 
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
@@ -136,10 +164,10 @@ if __name__ == "__main__":
             visualization_folder,
         ]
 
-        data_processes_files = []
+        data_process_files = []
         for test_folder_name in test_folders:
             test_folder = data_folder / test_folder_name
-            data_processes_files.extend(
+            data_process_files.extend(
                 [p for p in test_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]
             )
     else:
@@ -149,7 +177,7 @@ if __name__ == "__main__":
         curated_folder = data_folder
         unit_classifier_folder = data_folder
         visualization_folder = data_folder
-        data_processes_files = [
+        data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
         ]
 
@@ -194,6 +222,7 @@ if __name__ == "__main__":
     # Move spikesorted / postprocessing / curated
     spikesorted_results_folder = results_folder / "spikesorted"
     spikesorted_results_folder.mkdir(exist_ok=True)
+    spikesorted_motion_results_folder = spikesorted_results_folder / "motion"
     preprocessed_results_folder = results_folder / "preprocessed"
     preprocessed_results_folder.mkdir(exist_ok=True)
     postprocessed_results_folder = results_folder / "postprocessed"
@@ -232,7 +261,7 @@ if __name__ == "__main__":
 
     # MOTION
     motion_folders = [
-        p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
+        p for p in preprocessed_folder.iterdir() if p.name.startswith("motion_") and p.is_dir()
     ]
     if len(motion_folders) > 0:
         logging.info("Copying motion folders to results:")
@@ -250,6 +279,16 @@ if __name__ == "__main__":
         recording_name = f.name[len("spikesorted_") :]
         logging.info(f"\t{recording_name}")
         shutil.copytree(f, spikesorted_results_folder / recording_name)
+    spikesorted_motion_folders = [
+        p for p in spikesorted_folder.iterdir() if p.name.startswith("spikesortedmotion_") and p.is_dir()
+    ]
+    if len(spikesorted_motion_folders) > 0:
+        logging.info("Copying spikesorted motion folders to results:")
+        for f in spikesorted_motion_folders:
+            recording_name = f.name[len("spikesortedmotion_") :]
+            logging.info(f"\t{recording_name}")
+            spikesorted_motion_results_folder.mkdir(exist_ok=True)
+            shutil.copytree(f, spikesorted_motion_results_folder / recording_name)
 
     # POSTPROCESSED / CURATED
     logging.info("Copying postprocessed and curated folders to results:")
@@ -370,38 +409,69 @@ if __name__ == "__main__":
 
     # PROCESSING
     logging.info("Generating processing metadata")
-    ephys_data_processes = []
     processing_upgrader = ProcessingV1V2()
-    for json_file in data_processes_files:
+    ephys_data_processes = []
+    for json_file in data_process_files:
+        stream_name = "_".join(json_file.stem.split("_")[3:])
         with open(json_file, "r") as data_process_file:
             data_process_data = json.load(data_process_file)
-        data_process_upgraded = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
-        ephys_data_processes.append(data_process_upgraded)
 
-    processing = None
+            if "code" not in data_process_data:
+                # The 'code' field was added in 2.0. This is mainly used for testing with previously generated 1.0 data processes
+                data_process_data = processing_upgrader._convert_v1_process_to_v2(data_process_data, stage="Processing")
+
+            # Append stream name to make data processes unique
+            data_process_name = data_process_data["name"]
+            data_process_data["name"] = f"{data_process_name} - {stream_name}"
+            data_process_data["pipeline_name"] = PIPELINE_NAME
+            ephys_data_processes.append(data_process_data)
+
+    existing_data_processes = []
+    existing_pipelines = []
     if (ecephys_session_folder / "processing.json").is_file():
         with open(ecephys_session_folder / "processing.json", "r") as processing_file:
             processing_data = json.load(processing_file)
-        try:
-            upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
-            existing_data_processes = upgraded_processing_data.get("data_processes", [])
-        except Exception as e:
-            logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
-            existing_data_processes = []
+        if parse(processing_data["schema_version"]) < parse("2.0.0"):
+            logging.warning(
+                "DEPRECATION: processing.json is aind-data-schema 1.0 and will stop being supported in April 2026. "
+                "Please upgrade to aind-data-schema v2.0."
+            )
+            try:
+                upgraded_processing_data = processing_upgrader.upgrade(processing_data, schema_version=ADS_VERSION)
+                existing_data_processes = upgraded_processing_data.get("data_processes", [])
+                logging.info(f"Upgraded data processes to {ADS_VERSION}.")
+            except Exception as e:
+                logging.info(f"Failed upgrading processing for error: {e}\nCreating from scratch.")
+        else:
+            # validate existing data_processes
+            failed_data_processes = []
+            for data_process in processing_data["data_processes"]:
+                try:
+                    DataProcess.model_validate(data_process)
+                    existing_data_processes.append(data_process)
+                except Exception as e:
+                    failed_data_processes.append(data_process)
+            if len(failed_data_processes) > 0:
+                failed_process_names = [d["name"] for d  in failed_data_processes]
+                logging.info(f"Failed to validate existing data processes: {failed_process_names}")
+            existing_pipelines = processing_data["pipelines"]
+
 
     all_data_process_dicts = existing_data_processes + ephys_data_processes
+    # Ensure process names are unique
+    all_data_process_dicts = fix_process_names(all_data_process_dicts)
     all_data_processes = [DataProcess(**d) for d in all_data_process_dicts]
 
-    pipeline_code = Code(
-        name="AIND ephys pipeline",
+    ephys_pipeline = Code(
+        name=PIPELINE_NAME,
         url=PIPELINE_URL,
         version=PIPELINE_VERSION,
     )
+    pipelines = existing_pipelines + [ephys_pipeline]
     processing = Processing.create_with_sequential_process_graph(
-        pipelines=[pipeline_code],
+        pipelines=pipelines,
         data_processes=all_data_processes
     )
-
     processing.write_standard_file(output_directory=results_folder)
 
     # DATA_DESCRIPTION
@@ -418,26 +488,40 @@ if __name__ == "__main__":
     else:
         subject_id = "000000"  # unknown
 
+    data_description = None
     if data_description_data is not None:
-        try:
-            upgrader = DataDescriptionV1V2()
-            # at least one investigator is required
-            if len(data_description_data.get("investigators", [])) == 0:
-                data_description_data.update(dict(investigators=[dict(name="unkwnown")]))
-            if len(data_description_data.get("funding_source", [])) == 0:
-                data_description_data.update(
-                    dict(funding_source=[dict(funder="AIND")])
-                )
-            upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
-            DataDescription.model_validate(upgraded_data_description_data)
-            data_description = DataDescription(**upgraded_data_description_data)
-            derived_data_description = DataDescription.from_raw(
-                data_description, process_name=process_name
+        if parse(data_description_data["schema_version"]) < parse("2.0.0"):
+            logging.warning(
+                "DEPRECATION: data_description.json is aind-data-schema 1.0 and will stop being supported in April 2026. "
+                "Please upgrade to aind-data-schema v2.0."
             )
-        except Exception as e:
-            logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
-            raise
-            data_description = None
+            try:
+                upgrader = DataDescriptionV1V2()
+                # at least one investigator is required
+                if len(data_description_data.get("investigators", [])) == 0:
+                    data_description_data.update(dict(investigators=[dict(name="unkwnown")]))
+                if len(data_description_data.get("funding_source", [])) == 0:
+                    data_description_data.update(
+                        dict(funding_source=[dict(funder="AIND")])
+                    )
+                upgraded_data_description_data = upgrader.upgrade(data_description_data, schema_version=ADS_VERSION)
+                DataDescription.model_validate(upgraded_data_description_data)
+                logging.info(f"Upgraded data processes to {ADS_VERSION}.")
+                data_description = DataDescription(**upgraded_data_description_data)
+                derived_data_description = DataDescription.from_raw(
+                    data_description, process_name=process_name
+                )
+            except Exception as e:
+                logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
+        else:
+            try:
+                DataDescription.model_validate(data_description_data)
+                data_description = DataDescription(**data_description_data)
+                derived_data_description = DataDescription.from_raw(
+                    data_description, process_name=process_name
+                )
+            except Exception as e:
+                logging.info(f"Failed to instantiate data description: {e}\nCreating from scratch.")
 
     if data_description is None:
         # make from scratch:
@@ -462,7 +546,10 @@ if __name__ == "__main__":
     metadata_json_files = [
         p
         for p in ecephys_session_folder.iterdir()
-        if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name and "job" not in p.name
+        if p.suffix == ".json" and "processing" not in p.name 
+        and "data_description" not in p.name 
+        and "job" not in p.name
+        and "metadata.nd" not in p.name
     ]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
