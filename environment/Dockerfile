@@ -1,15 +1,22 @@
-# hash:sha256:5e4b88535b7b4c1c39cf698961f5e2eb7304d65ed4132e211233f54066d03435
-FROM registry.codeocean.allenneuraldynamics.org/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
+# hash:sha256:e5a5e878e918c88b5583b3111aaab5974339e96ce57b7134a85a948524e6021f
+ARG REGISTRY_HOST
+FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG AWS_ACCESS_KEY_ID
-ARG AWS_DEFAULT_REGION
-ARG AWS_SECRET_ACCESS_KEY
-
 ARG GIT_ASKPASS
-ARG GIT_ACCESS_TOKEN
-COPY git-askpass /
+COPY git-ask-pass /
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential=12.9ubuntu3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN conda install -y \
+        jupyterlab==4.4.6 \
+    && conda clean -ya
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==0.19.1 \
-    spikeinterface[full]==0.100.0
+    aind-data-schema==2.4.0 \
+    aind-log-utils==0.2.3 \
+    aind-metadata-upgrader==0.2.2 \
+    spikeinterface[full]==0.104.3
