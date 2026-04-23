@@ -153,7 +153,6 @@ if __name__ == "__main__":
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
         curated_folder = data_folder / "curation_pipeline_output_test"
-        unit_classifier_folder = data_folder / "unit_classifier_pipeline_output_test"
         visualization_folder = data_folder / "visualization_pipeline_output_test"
 
         test_folders = [
@@ -175,7 +174,6 @@ if __name__ == "__main__":
         preprocessed_folder = data_folder
         spikesorted_folder = data_folder
         curated_folder = data_folder
-        unit_classifier_folder = data_folder
         visualization_folder = data_folder
         data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
@@ -314,26 +312,28 @@ if __name__ == "__main__":
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
             continue
-        
-        # add defaut_qc property
-        default_qc = None
-        decoder_label = None
-        curation_file = curated_folder / f"qc_{recording_name}.npy"
-        if curation_file.is_file():
-            default_qc = np.load(curation_file)
-            if len(default_qc) == len(analyzer.unit_ids):
-                analyzer.set_sorting_property("default_qc", default_qc, save=True)
-        # add classifier
-        unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
-        if unit_classifier_file.is_file():
-            unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
-            if len(unit_classifier_df) == len(analyzer.unit_ids):
-                decoder_label = np.array(unit_classifier_df["decoder_label"].values).astype("str")
-                analyzer.set_sorting_property("decoder_label", decoder_label, save=True)
-                decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
-                analyzer.set_sorting_property("decoder_probability", decoder_probability, save=True)
 
+        # add labels
+        unit_labels_file = curated_folder / f"unit_labels_{recording_name}.csv"
+        if unit_labels_file.is_file():
+            unit_labels_df = pd.read_csv(unit_labels_file, index_col=False)
+            if len(unit_labels_df) == len(analyzer.unit_ids):
+                for label in unit_labels_df.columns:
+                    values = unit_labels_df[label].values
+                    logging.info(f"\t Adding label {label} to analyzer.")
+                    if "_label" in label:
+                        values = np.array(values).astype("str")
+                    analyzer.set_sorting_property(label, values, save=True)
+                    # backward-compatibility
+                    if label == "unitrefine_label":
+                        analyzer.set_sorting_property("decoder_label", values, save=True)
+                    if label == "unitrefine_probability":
+                        analyzer.set_sorting_property("decoder_probability", values, save=True)
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
+
+        curation_json_files = [p for p in curated_folder.iterdir() if p.name.startswith("curation_")]
+        for curation_json_file in curation_json_files:
+            shutil.copyfile(curation_json_file, curated_results_folder / recording_name / "curation.json")
 
         # If the collect results runs in a pipeline, we need to further modify the mappings of the preprocessed recording in the analyzer.
         # For the postprocessed capsule, the analyzer is in:
