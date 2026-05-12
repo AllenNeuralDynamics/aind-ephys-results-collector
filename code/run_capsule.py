@@ -39,6 +39,7 @@ from aind_data_schema.core.processing import (
     ResourceUsage,
 )
 
+from aind_metadata_upgrader.upgrade import Upgrade
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 
@@ -553,7 +554,7 @@ if __name__ == "__main__":
     derived_data_description.write_standard_file(output_directory=results_folder)
 
     # OTHER METADATA FILES
-    logging.info("Propagating other metadata files")
+    logging.info("Updating other metadata files")
     metadata_json_files = [
         p
         for p in ecephys_session_folder.iterdir()
@@ -562,8 +563,18 @@ if __name__ == "__main__":
         and "job" not in p.name
         and "metadata.nd" not in p.name
     ]
+    metadata = dict()
     for json_file in metadata_json_files:
-        shutil.copy(json_file, results_folder)
+        field_name = json_file.name
+        with open(json_file) as f:
+            data = json.load(f)
+            metadata[field_name] = data
+    try:
+        upgrader = Upgrade(metadata)
+        for field_name in upgrader.metadata:
+            upgrader.metadata[field_name].write_standard_file(output_directory=results_folder)
+    except Exception as e:
+        logging.info(f"Failed to upgrade metadata. Error\n{e}")
 
     t_collection_end = time.perf_counter()
     elapsed_time_collection = np.round(t_collection_end - t_collection_start, 2)
