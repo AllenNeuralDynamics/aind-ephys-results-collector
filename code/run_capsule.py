@@ -3,6 +3,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import os
+import re
 import sys
 import argparse
 from pathlib import Path
@@ -145,6 +146,16 @@ if __name__ == "__main__":
     process_name = args.static_process_name or args.process_name
     pipeline_data_path = args.pipeline_data_path
     pipeline_results_path = args.pipeline_results_path
+
+    # sanitize process_name
+    _bad_chars_pattern = re.compile(r'[<>:;"/|? \\_]')
+    if _bad_chars_pattern.search(process_name):
+        sanitized_process_name = _bad_chars_pattern.sub("-", process_name)
+        logging.warning(
+            f"process_name '{process_name}' contains characters not allowed by the pattern "
+            f"'^[^<>:;\"/|? \\\\_]+$'. Replacing with dashes: '{sanitized_process_name}'"
+        )
+        process_name = sanitized_process_name
 
     # check if test
     if (data_folder / "postprocessing_pipeline_output_test").is_dir():
