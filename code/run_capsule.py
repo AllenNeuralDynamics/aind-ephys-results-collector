@@ -3,6 +3,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import os
+import re
 import sys
 import argparse
 from pathlib import Path
@@ -146,6 +147,16 @@ if __name__ == "__main__":
     pipeline_data_path = args.pipeline_data_path
     pipeline_results_path = args.pipeline_results_path
 
+    # sanitize process_name
+    _bad_chars_pattern = re.compile(r'[<>:;"/|? \\_]')
+    if _bad_chars_pattern.search(process_name):
+        sanitized_process_name = _bad_chars_pattern.sub("-", process_name)
+        logging.warning(
+            f"process_name '{process_name}' contains characters not allowed by the pattern "
+            f"'^[^<>:;\"/|? \\\\_]+$'. Replacing with dashes: '{sanitized_process_name}'"
+        )
+        process_name = sanitized_process_name
+
     # check if test
     if (data_folder / "postprocessing_pipeline_output_test").is_dir():
         logging.info("\n*******************\n**** TEST MODE ****\n*******************\n")
@@ -153,7 +164,6 @@ if __name__ == "__main__":
         preprocessed_folder = data_folder / "preprocessing_pipeline_output_test"
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
         curated_folder = data_folder / "curation_pipeline_output_test"
-        unit_classifier_folder = data_folder / "unit_classifier_pipeline_output_test"
         visualization_folder = data_folder / "visualization_pipeline_output_test"
 
         test_folders = [
@@ -175,7 +185,6 @@ if __name__ == "__main__":
         preprocessed_folder = data_folder
         spikesorted_folder = data_folder
         curated_folder = data_folder
-        unit_classifier_folder = data_folder
         visualization_folder = data_folder
         data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
@@ -222,6 +231,7 @@ if __name__ == "__main__":
     # Move spikesorted / postprocessing / curated
     spikesorted_results_folder = results_folder / "spikesorted"
     spikesorted_results_folder.mkdir(exist_ok=True)
+    spikesorted_motion_results_folder = spikesorted_results_folder / "motion"
     preprocessed_results_folder = results_folder / "preprocessed"
     preprocessed_results_folder.mkdir(exist_ok=True)
     postprocessed_results_folder = results_folder / "postprocessed"
@@ -260,7 +270,7 @@ if __name__ == "__main__":
 
     # MOTION
     motion_folders = [
-        p for p in preprocessed_folder.iterdir() if "motion_" in p.name and p.is_dir()
+        p for p in preprocessed_folder.iterdir() if p.name.startswith("motion_") and p.is_dir()
     ]
     if len(motion_folders) > 0:
         logging.info("Copying motion folders to results:")
@@ -278,6 +288,16 @@ if __name__ == "__main__":
         recording_name = f.name[len("spikesorted_") :]
         logging.info(f"\t{recording_name}")
         shutil.copytree(f, spikesorted_results_folder / recording_name)
+    spikesorted_motion_folders = [
+        p for p in spikesorted_folder.iterdir() if p.name.startswith("spikesortedmotion_") and p.is_dir()
+    ]
+    if len(spikesorted_motion_folders) > 0:
+        logging.info("Copying spikesorted motion folders to results:")
+        for f in spikesorted_motion_folders:
+            recording_name = f.name[len("spikesortedmotion_") :]
+            logging.info(f"\t{recording_name}")
+            spikesorted_motion_results_folder.mkdir(exist_ok=True)
+            shutil.copytree(f, spikesorted_motion_results_folder / recording_name)
 
     # POSTPROCESSED / CURATED
     logging.info("Copying postprocessed and curated folders to results:")
@@ -303,26 +323,28 @@ if __name__ == "__main__":
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
             continue
-        
-        # add defaut_qc property
-        default_qc = None
-        decoder_label = None
-        curation_file = curated_folder / f"qc_{recording_name}.npy"
-        if curation_file.is_file():
-            default_qc = np.load(curation_file)
-            if len(default_qc) == len(analyzer.unit_ids):
-                analyzer.set_sorting_property("default_qc", default_qc, save=True)
-        # add classifier
-        unit_classifier_file = unit_classifier_folder / f"unit_classifier_{recording_name}.csv"
-        if unit_classifier_file.is_file():
-            unit_classifier_df = pd.read_csv(unit_classifier_file, index_col=False)
-            if len(unit_classifier_df) == len(analyzer.unit_ids):
-                decoder_label = np.array(unit_classifier_df["decoder_label"].values).astype("str")
-                analyzer.set_sorting_property("decoder_label", decoder_label, save=True)
-                decoder_probability = np.array(unit_classifier_df["decoder_probability"].values).astype(float)
-                analyzer.set_sorting_property("decoder_probability", decoder_probability, save=True)
 
+        # add labels
+        unit_labels_file = curated_folder / f"unit_labels_{recording_name}.csv"
+        if unit_labels_file.is_file():
+            unit_labels_df = pd.read_csv(unit_labels_file, index_col=False)
+            if len(unit_labels_df) == len(analyzer.unit_ids):
+                for label in unit_labels_df.columns:
+                    values = unit_labels_df[label].values
+                    logging.info(f"\t Adding label {label} to analyzer.")
+                    if "_label" in label:
+                        values = np.array(values).astype("str")
+                    analyzer.set_sorting_property(label, values, save=True)
+                    # backward-compatibility
+                    if label == "unitrefine_label":
+                        analyzer.set_sorting_property("decoder_label", values, save=True)
+                    if label == "unitrefine_probability":
+                        analyzer.set_sorting_property("decoder_probability", values, save=True)
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
+
+        curation_json_files = [p for p in curated_folder.iterdir() if p.name.startswith("curation_")]
+        for curation_json_file in curation_json_files:
+            shutil.copyfile(curation_json_file, curated_results_folder / recording_name / "curation.json")
 
         # If the collect results runs in a pipeline, we need to further modify the mappings of the preprocessed recording in the analyzer.
         # For the postprocessed capsule, the analyzer is in:
@@ -477,6 +499,7 @@ if __name__ == "__main__":
     else:
         subject_id = "000000"  # unknown
 
+    data_description = None
     if data_description_data is not None:
         if parse(data_description_data["schema_version"]) < parse("2.0.0"):
             logging.warning(
@@ -501,7 +524,6 @@ if __name__ == "__main__":
                 )
             except Exception as e:
                 logging.info(f"Failed upgrading data description for error: {e}\nCreating from scratch.")
-                data_description = None
         else:
             try:
                 DataDescription.model_validate(data_description_data)
@@ -511,7 +533,6 @@ if __name__ == "__main__":
                 )
             except Exception as e:
                 logging.info(f"Failed to instantiate data description: {e}\nCreating from scratch.")
-                data_description = None
 
     if data_description is None:
         # make from scratch:
@@ -536,7 +557,10 @@ if __name__ == "__main__":
     metadata_json_files = [
         p
         for p in ecephys_session_folder.iterdir()
-        if p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name and "job" not in p.name
+        if p.suffix == ".json" and "processing" not in p.name 
+        and "data_description" not in p.name 
+        and "job" not in p.name
+        and "metadata.nd" not in p.name
     ]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)

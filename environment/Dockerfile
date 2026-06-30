@@ -1,10 +1,10 @@
-# hash:sha256:ff5263687b908843fc881a50016e6442f7c974e935b24c1638f477badf9c6fbf
+# hash:sha256:17ff468ac42a41ecb92fd10eff08b0a16e69a31b3ccd5225f7edba080fbbd4ff
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
-COPY git-askpass /
+COPY git-ask-pass /
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -16,7 +16,7 @@ RUN conda install -y \
     && conda clean -ya
 
 RUN pip install -U --no-cache-dir \
-    aind-data-schema==2.4.0 \
+    aind-data-schema==2.8.1 \
     aind-log-utils==0.2.3 \
-    aind-metadata-upgrader==0.2.2 \
-    spikeinterface[full]==0.103.0
+    aind-metadata-upgrader==0.17.1 \
+    spikeinterface[full]==0.104.7
