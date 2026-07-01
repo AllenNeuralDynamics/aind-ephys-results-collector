@@ -285,6 +285,9 @@ if __name__ == "__main__":
     logging.info("Copying spikesorted folders to results:")
     spikesorted_folders = [p for p in spikesorted_folder.iterdir() if "spikesorted_" in p.name and p.is_dir()]
     for f in spikesorted_folders:
+        if (f / "error.txt").is_file():
+            logging.info(f"\tSkipping {f.name} due to error.txt")
+            continue
         recording_name = f.name[len("spikesorted_") :]
         logging.info(f"\t{recording_name}")
         shutil.copytree(f, spikesorted_results_folder / recording_name)
