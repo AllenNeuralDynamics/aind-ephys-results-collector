@@ -33,10 +33,6 @@ from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.core.processing import (
     DataProcess,
     Processing,
-    ProcessName,
-    ProcessStage,
-    ResourceTimestamped,
-    ResourceUsage,
 )
 
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
@@ -165,6 +161,7 @@ if __name__ == "__main__":
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
         curated_folder = data_folder / "curation_pipeline_output_test"
         visualization_folder = data_folder / "visualization_pipeline_output_test"
+        phy_folder = data_folder / "phy_pipeline_output_test"
 
         test_folders = [
             preprocessed_folder,
@@ -172,6 +169,7 @@ if __name__ == "__main__":
             postprocessed_folder,
             curated_folder,
             visualization_folder,
+            phy_folder,
         ]
 
         data_process_files = []
@@ -186,6 +184,7 @@ if __name__ == "__main__":
         spikesorted_folder = data_folder
         curated_folder = data_folder
         visualization_folder = data_folder
+        phy_folder = data_folder
         data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
         ]
@@ -285,6 +284,9 @@ if __name__ == "__main__":
     logging.info("Copying spikesorted folders to results:")
     spikesorted_folders = [p for p in spikesorted_folder.iterdir() if "spikesorted_" in p.name and p.is_dir()]
     for f in spikesorted_folders:
+        if (f / "error.txt").is_file():
+            logging.info(f"\tSkipping {f.name} due to error.txt")
+            continue
         recording_name = f.name[len("spikesorted_") :]
         logging.info(f"\t{recording_name}")
         shutil.copytree(f, spikesorted_results_folder / recording_name)
@@ -342,8 +344,8 @@ if __name__ == "__main__":
                         analyzer.set_sorting_property("decoder_probability", values, save=True)
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
-        curation_json_files = [p for p in curated_folder.iterdir() if p.name.startswith("curation_")]
-        for curation_json_file in curation_json_files:
+        curation_json_file = curated_folder / f"curation_{recording_name}.json"
+        if curation_json_file.is_file():
             shutil.copyfile(curation_json_file, curated_results_folder / recording_name / "curation.json")
 
         # If the collect results runs in a pipeline, we need to further modify the mappings of the preprocessed recording in the analyzer.
@@ -417,6 +419,19 @@ if __name__ == "__main__":
         for viz_folder in visualization_folders:
             recording_name = viz_folder.name[len("visualization_") :]
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
+
+    # PHY
+    phy_folders = [
+        p for p in phy_folder.iterdir() if p.is_dir() and p.name.startswith("phy_")
+    ]
+    for phy_input_folder in phy_folders:
+        if (phy_input_folder / "error.txt").is_file():
+            continue
+        recording_name = phy_input_folder.name[len("phy_") :]
+        logging.info(f"\tCopying phy folder for {recording_name}")
+        phy_output_folder = results_folder / "phy" / recording_name
+        phy_output_folder.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(phy_input_folder, phy_output_folder, dirs_exist_ok=True)
 
     # PROCESSING
     logging.info("Generating processing metadata")
