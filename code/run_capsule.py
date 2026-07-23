@@ -34,6 +34,7 @@ from aind_data_schema.core.processing import (
     DataProcess,
     Processing,
 )
+from aind_data_schema import __version__ as ADS_VERSION
 
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
@@ -45,11 +46,9 @@ try:
 except ImportError:
     HAVE_AIND_LOG_UTILS = False
 
-PIPELINE_MAINAINER = "Alessio Buccino"
 PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = "2.4.0"
 
 
 data_folder = Path("../data/")
