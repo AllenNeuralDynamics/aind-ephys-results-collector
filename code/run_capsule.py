@@ -313,14 +313,11 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
-            # we first check if the input postprocessed folder is valid
-            # this will raise an Exception if it fails, preventing to copy
-            # to results
-            analyzer = si.load(postprocessed_input_folder, load_extensions=False)
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name
             shutil.copytree(postprocessed_input_folder, analyzer_output_folder)
-            # we reload the analyzer to results to be able to append properties
-            analyzer = si.load(analyzer_output_folder, load_extensions=False)
+            # We reload the analyzer to results to be able to append properties
+            # This will also validate that the analyzer is valid and can be loaded.
+            analyzer = si.load(analyzer_output_folder, load_extensions=False, lazy=True)
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
             continue
@@ -341,6 +338,7 @@ if __name__ == "__main__":
                         analyzer.set_sorting_property("decoder_label", values, save=True)
                     if label == "unitrefine_probability":
                         analyzer.set_sorting_property("decoder_probability", values, save=True)
+        logging.info(f"\tSaving curated analyzer to {curated_results_folder / recording_name}")
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
         curation_json_file = curated_folder / f"curation_{recording_name}.json"
