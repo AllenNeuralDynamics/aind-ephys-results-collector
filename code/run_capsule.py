@@ -420,17 +420,18 @@ if __name__ == "__main__":
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
 
     # PHY
-    phy_folders = [
-        p for p in phy_folder.iterdir() if p.is_dir() and p.name.startswith("phy_")
-    ]
-    for phy_input_folder in phy_folders:
-        if (phy_input_folder / "error.txt").is_file():
-            continue
-        recording_name = phy_input_folder.name[len("phy_") :]
-        logging.info(f"\tCopying phy folder for {recording_name}")
-        phy_output_folder = results_folder / "phy" / recording_name
-        phy_output_folder.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(phy_input_folder, phy_output_folder, dirs_exist_ok=True)
+    if phy_folder.is_dir():
+        phy_folders = [
+            p for p in phy_folder.iterdir() if p.is_dir() and p.name.startswith("phy_")
+        ]
+        for phy_input_folder in phy_folders:
+            if (phy_input_folder / "error.txt").is_file():
+                continue
+            recording_name = phy_input_folder.name[len("phy_") :]
+            logging.info(f"\tCopying phy folder for {recording_name}")
+            phy_output_folder = results_folder / "phy" / recording_name
+            phy_output_folder.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(phy_input_folder, phy_output_folder, dirs_exist_ok=True)
 
     # PROCESSING
     logging.info("Generating processing metadata")
