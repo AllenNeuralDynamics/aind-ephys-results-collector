@@ -174,6 +174,8 @@ if __name__ == "__main__":
         data_process_files = []
         for test_folder_name in test_folders:
             test_folder = data_folder / test_folder_name
+            if not test_folder.is_dir():
+                continue
             data_process_files.extend(
                 [p for p in test_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]
             )
