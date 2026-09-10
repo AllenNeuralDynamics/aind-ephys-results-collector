@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 import logging
 import zarr
-import numcodecs
 
 # SpikeInterface
 import spikeinterface as si
@@ -356,40 +355,28 @@ if __name__ == "__main__":
         AWS_BATCH_EXECUTOR = os.getenv("AWS_BATCH_JOB_ID") is not None
 
         analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-        recording_root = analyzer_root["recording"]
-        object_codec = None
-        if isinstance(recording_root.filters[0], numcodecs.JSON):
-            object_codec = numcodecs.JSON()
-        elif isinstance(recording_root.filters[0], numcodecs.Pickle):
-            object_codec = numcodecs.Pickle()
-        if object_codec is not None:
-            recording_dict = recording_root[0]
-            if pipeline_results_path is not None:
-                # here we need to resolve the recording path, make it relative to the pipeline results path
-                pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
-            elif AWS_BATCH_EXECUTOR:
-                # here we need to add a new subfolder for the session name
-                pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
-            else:
-                # here we just add the postprocessed folder to the results folder
-                pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
-            logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
-            recording_dict_mapped = remap_extractor_path(
-                recording_dict=recording_dict,
-                base_folder=postprocessed_input_folder,
-                relative_to=pipeline_postprocessed_output
-            )
-            # update the "ecephys_session" field in the recording_dict, if present
-            recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
-            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-            recording_dict_mapped = json.loads(recording_dict_str)
-            # remove the old recording and add the new one
-            del analyzer_root["recording"]
-            zarr_rec = np.array([recording_dict_mapped], dtype=object)
-            analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
-            zarr.consolidate_metadata(analyzer_root.store)
+        recording_dict = analyzer_root.attrs["recording"]
+        if pipeline_results_path is not None:
+            # here we need to resolve the recording path, make it relative to the pipeline results path
+            pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
+        elif AWS_BATCH_EXECUTOR:
+            # here we need to add a new subfolder for the session name
+            pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
         else:
-            logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
+            # here we just add the postprocessed folder to the results folder
+            pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
+        logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
+        recording_dict_mapped = remap_extractor_path(
+            recording_dict=recording_dict,
+            base_folder=postprocessed_input_folder,
+            relative_to=pipeline_postprocessed_output
+        )
+        # update the "ecephys_session" field in the recording_dict, if present
+        recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
+        recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+        recording_dict_mapped = json.loads(recording_dict_str)
+        # remove the old recording and add the new one
+        analyzer_root.attrs["recording"] = recording_dict_mapped
 
     # VISUALIZATION
     logging.info("Copying visualization outputs to results:")
