@@ -320,6 +320,9 @@ if __name__ == "__main__":
             analyzer = si.load(analyzer_output_folder, load_extensions=False, lazy=True)
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
+            # Clean up any partially copied results
+            if analyzer_output_folder.is_dir():
+                shutil.rmtree(analyzer_output_folder)
             continue
 
         # add labels
