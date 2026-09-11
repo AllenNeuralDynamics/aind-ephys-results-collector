@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 import logging
 import zarr
-import numcodecs
 
 # SpikeInterface
 import spikeinterface as si
@@ -33,11 +32,8 @@ from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.core.processing import (
     DataProcess,
     Processing,
-    ProcessName,
-    ProcessStage,
-    ResourceTimestamped,
-    ResourceUsage,
 )
+from aind_data_schema import __version__ as ADS_VERSION
 
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
@@ -52,7 +48,6 @@ except ImportError:
 PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = "2.4.0"
 
 
 data_folder = Path("../data/")
@@ -164,6 +159,7 @@ if __name__ == "__main__":
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
         curated_folder = data_folder / "curation_pipeline_output_test"
         visualization_folder = data_folder / "visualization_pipeline_output_test"
+        phy_folder = data_folder / "phy_pipeline_output_test"
 
         test_folders = [
             preprocessed_folder,
@@ -171,11 +167,14 @@ if __name__ == "__main__":
             postprocessed_folder,
             curated_folder,
             visualization_folder,
+            phy_folder,
         ]
 
         data_process_files = []
         for test_folder_name in test_folders:
             test_folder = data_folder / test_folder_name
+            if not test_folder.is_dir():
+                continue
             data_process_files.extend(
                 [p for p in test_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]
             )
@@ -185,6 +184,7 @@ if __name__ == "__main__":
         spikesorted_folder = data_folder
         curated_folder = data_folder
         visualization_folder = data_folder
+        phy_folder = data_folder
         data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
         ]
@@ -314,14 +314,11 @@ if __name__ == "__main__":
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
-            # we first check if the input postprocessed folder is valid
-            # this will raise an Exception if it fails, preventing to copy
-            # to results
-            analyzer = si.load(postprocessed_input_folder, load_extensions=False)
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name
             shutil.copytree(postprocessed_input_folder, analyzer_output_folder)
-            # we reload the analyzer to results to be able to append properties
-            analyzer = si.load(analyzer_output_folder, load_extensions=False)
+            # We reload the analyzer to results to be able to append properties
+            # This will also validate that the analyzer is valid and can be loaded.
+            analyzer = si.load(analyzer_output_folder, load_extensions=False, lazy=True)
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
             # Clean up any partially copied results
@@ -345,6 +342,7 @@ if __name__ == "__main__":
                         analyzer.set_sorting_property("decoder_label", values, save=True)
                     if label == "unitrefine_probability":
                         analyzer.set_sorting_property("decoder_probability", values, save=True)
+        logging.info(f"\tSaving curated analyzer to {curated_results_folder / recording_name}")
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
         curation_json_file = curated_folder / f"curation_{recording_name}.json"
@@ -360,40 +358,28 @@ if __name__ == "__main__":
         AWS_BATCH_EXECUTOR = os.getenv("AWS_BATCH_JOB_ID") is not None
 
         analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-        recording_root = analyzer_root["recording"]
-        object_codec = None
-        if isinstance(recording_root.filters[0], numcodecs.JSON):
-            object_codec = numcodecs.JSON()
-        elif isinstance(recording_root.filters[0], numcodecs.Pickle):
-            object_codec = numcodecs.Pickle()
-        if object_codec is not None:
-            recording_dict = recording_root[0]
-            if pipeline_results_path is not None:
-                # here we need to resolve the recording path, make it relative to the pipeline results path
-                pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
-            elif AWS_BATCH_EXECUTOR:
-                # here we need to add a new subfolder for the session name
-                pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
-            else:
-                # here we just add the postprocessed folder to the results folder
-                pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
-            logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
-            recording_dict_mapped = remap_extractor_path(
-                recording_dict=recording_dict,
-                base_folder=postprocessed_input_folder,
-                relative_to=pipeline_postprocessed_output
-            )
-            # update the "ecephys_session" field in the recording_dict, if present
-            recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
-            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-            recording_dict_mapped = json.loads(recording_dict_str)
-            # remove the old recording and add the new one
-            del analyzer_root["recording"]
-            zarr_rec = np.array([recording_dict_mapped], dtype=object)
-            analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
-            zarr.consolidate_metadata(analyzer_root.store)
+        recording_dict = analyzer_root.attrs["recording"]
+        if pipeline_results_path is not None:
+            # here we need to resolve the recording path, make it relative to the pipeline results path
+            pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
+        elif AWS_BATCH_EXECUTOR:
+            # here we need to add a new subfolder for the session name
+            pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
         else:
-            logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
+            # here we just add the postprocessed folder to the results folder
+            pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
+        logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
+        recording_dict_mapped = remap_extractor_path(
+            recording_dict=recording_dict,
+            base_folder=postprocessed_input_folder,
+            relative_to=pipeline_postprocessed_output
+        )
+        # update the "ecephys_session" field in the recording_dict, if present
+        recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
+        recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+        recording_dict_mapped = json.loads(recording_dict_str)
+        # remove the old recording and add the new one
+        analyzer_root.attrs["recording"] = recording_dict_mapped
 
     # VISUALIZATION
     logging.info("Copying visualization outputs to results:")
@@ -422,6 +408,20 @@ if __name__ == "__main__":
         for viz_folder in visualization_folders:
             recording_name = viz_folder.name[len("visualization_") :]
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
+
+    # PHY
+    if phy_folder.is_dir():
+        phy_folders = [
+            p for p in phy_folder.iterdir() if p.is_dir() and p.name.startswith("phy_")
+        ]
+        for phy_input_folder in phy_folders:
+            if (phy_input_folder / "error.txt").is_file():
+                continue
+            recording_name = phy_input_folder.name[len("phy_") :]
+            logging.info(f"\tCopying phy folder for {recording_name}")
+            phy_output_folder = results_folder / "phy" / recording_name
+            phy_output_folder.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(phy_input_folder, phy_output_folder, dirs_exist_ok=True)
 
     # PROCESSING
     logging.info("Generating processing metadata")
