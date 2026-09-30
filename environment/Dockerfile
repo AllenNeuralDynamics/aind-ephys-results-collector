@@ -1,4 +1,4 @@
-# hash:sha256:0a735f2df21477dd610a0889fcee391d20fd3dfa44d9004f6b7d236615969203
+# hash:sha256:74820f7e0c7ae4d5bdb47233aab74d47f21d8f2df6c9965c75cee2791ca9d6b6
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -10,10 +10,6 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential=12.9ubuntu3 \
     && rm -rf /var/lib/apt/lists/*
-
-RUN conda install -y \
-        jupyterlab==4.4.6 \
-    && conda clean -ya
 
 RUN pip install -U --no-cache-dir \
     aind-data-schema==2.8.1 \
