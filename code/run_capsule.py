@@ -23,6 +23,7 @@ import spikeinterface as si
 from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in_extractor_dict
 
 # AIND
+from aind_data_schema import __version__ as ADS_VERSION
 from aind_data_schema_models.modalities import Modality
 from aind_data_schema_models.organizations import Organization
 from aind_data_schema_models.data_name_patterns import DataLevel, build_data_name
@@ -42,17 +43,9 @@ from aind_data_schema.core.processing import (
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 
-try:
-    from aind_log_utils import log
-
-    HAVE_AIND_LOG_UTILS = True
-except ImportError:
-    HAVE_AIND_LOG_UTILS = False
-
 PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = "2.4.0"
 
 
 data_folder = Path("../data/")
@@ -80,6 +73,8 @@ parser.add_argument(
     default=None,
     help="Path to the results folder where the collected results will be saved.",
 )
+
+parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 
 def remap_extractor_path(recording_dict, base_folder, relative_to=None):
@@ -137,14 +132,67 @@ def fix_process_names(process_dicts: list):
         return process_dicts
 
 
-
-if __name__ == "__main__":
+def run() -> None:
+    """Entrypoint for the results collector capsule."""
     ###### COLLECT RESULTS #########
     t_collection_start = time.perf_counter()
     args = parser.parse_args()
     process_name = args.static_process_name or args.process_name
     pipeline_data_path = args.pipeline_data_path
     pipeline_results_path = args.pipeline_results_path
+    PARAMS = args.params
+
+    if PARAMS is not None:
+        try:
+            # try to parse the JSON string first to avoid file name too long error
+            collector_params = json.loads(PARAMS)
+        except json.JSONDecodeError:
+            if Path(PARAMS).is_file():
+                with open(PARAMS, "r") as f:
+                    collector_params = json.load(f)
+            else:
+                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
+    else:
+        with open("params.json", "r") as f:
+            collector_params = json.load(f)
+
+    # TODO: temporary - remove from params.json when logging is distributed by pipeline
+    LOGGING = collector_params.pop("logging", None)
+
+    # setup logging before any other logging call
+    if LOGGING is None:
+        logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
+    else:
+        if LOGGING["package"] == "logging":
+            logging_cfg = LOGGING.get("logging_cfg", {})
+            logging.basicConfig(stream=sys.stdout, **logging_cfg)
+        elif LOGGING["package"] == "log-schema":
+            import log_schema
+
+            pipeline_name = LOGGING.get("pipeline_name", "AIND Ephys Pipeline")
+            acquisition_name = LOGGING.get("acquisition_name", None)
+
+            if acquisition_name is None:
+                data_description_json = list(data_folder.glob("**/data_description.json"))
+                if len(data_description_json) > 0:
+                    data_description_json = data_description_json[0]
+                    with open(data_description_json, "r") as f:
+                        data_description = json.load(f)
+                    acquisition_name = data_description["name"]
+
+            config = LOGGING.get("logging_cfg")
+            if config is not None and len(config) == 0:
+                config = None
+            log_schema.setup_logging(
+                config=config,
+                model={
+                    "pipeline_name": pipeline_name,
+                    "acquisition_name": acquisition_name,
+                    "process_name": "Collect Results"
+                }
+            )
+
+    logging.info("Begin processing...", extra={"event_type": "stage_start"})
 
     # sanitize process_name
     _bad_chars_pattern = re.compile(r'[<>:;"/|? \\_]')
@@ -192,28 +240,6 @@ if __name__ == "__main__":
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
     ecephys_session_folder = ecephys_sessions[0]
-
-    if HAVE_AIND_LOG_UTILS:
-        # look for subject.json and data_description.json files
-        subject_json = ecephys_session_folder / "subject.json"
-        subject_id = "undefined"
-        if subject_json.is_file():
-            subject_data = json.load(open(subject_json, "r"))
-            subject_id = subject_data["subject_id"]
-
-        data_description_json = ecephys_session_folder / "data_description.json"
-        session_name = "undefined"
-        if data_description_json.is_file():
-            data_description = json.load(open(data_description_json, "r"))
-            session_name = data_description["name"]
-
-        log.setup_logging(
-            "Collect Results Ecephys",
-            subject_id=subject_id,
-            asset_name=session_name,
-        )
-    else:
-        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 
     logging.info("\n\nCOLLECTING RESULTS")
 
@@ -573,3 +599,12 @@ if __name__ == "__main__":
     t_collection_end = time.perf_counter()
     elapsed_time_collection = np.round(t_collection_end - t_collection_start, 2)
     logging.info(f"COLLECTION time: {elapsed_time_collection}s")
+    logging.info("Pipeline stage completed", extra={"event_type": "stage_complete"})
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except Exception as e:
+        logging.exception("Pipeline stage failed", extra={"event_type": "stage_error"})
+        raise
