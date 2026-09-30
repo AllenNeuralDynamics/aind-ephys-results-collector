@@ -23,6 +23,7 @@ import spikeinterface as si
 from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in_extractor_dict
 
 # AIND
+from aind_data_schema import __version__ as ADS_VERSION
 from aind_data_schema_models.modalities import Modality
 from aind_data_schema_models.organizations import Organization
 from aind_data_schema_models.data_name_patterns import DataLevel, build_data_name
@@ -45,7 +46,6 @@ from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = aind_data_schema.__version__
 
 
 data_folder = Path("../data/")
