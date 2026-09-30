@@ -45,7 +45,7 @@ from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
-ADS_VERSION = "2.4.0"
+ADS_VERSION = aind_data_schema.__version__
 
 
 data_folder = Path("../data/")
@@ -74,15 +74,7 @@ parser.add_argument(
     help="Path to the results folder where the collected results will be saved.",
 )
 
-parser.add_argument(
-    "--logging",
-    default=None,
-    help=(
-        "Logging configuration, either as a JSON string or as a path to a JSON file. "
-        "The JSON must define a 'package' field ('logging' or 'log-schema') and an optional "
-        "'logging_cfg' field. If not provided, a default logging configuration is used."
-    ),
-)
+parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
 
 
 def remap_extractor_path(recording_dict, base_folder, relative_to=None):
@@ -140,55 +132,6 @@ def fix_process_names(process_dicts: list):
         return process_dicts
 
 
-
-def setup_logging(logging_arg: str | None):
-    """
-    This function sets up logging, either with the standard `logging` package
-    or with `log-schema`. The `logging_arg` can be a JSON string or a path to
-    a JSON file. If None, a default `logging` configuration is used.
-    """
-    if logging_arg is None:
-        logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
-        return
-
-    if Path(logging_arg).is_file():
-        with open(logging_arg, "r") as f:
-            logging_config = json.load(f)
-    else:
-        logging_config = json.loads(logging_arg)
-
-    if logging_config["package"] == "logging":
-        logging_cfg = logging_config.get("logging_cfg", {})
-        logging.basicConfig(stream=sys.stdout, **logging_cfg)
-    elif logging_config["package"] == "log-schema":
-        import log_schema
-
-        pipeline_name = logging_config.get("pipeline_name", PIPELINE_NAME)
-        acquisition_name = logging_config.get("acquisition_name", None)
-
-        if acquisition_name is None:
-            data_description_json = list(data_folder.glob("**/data_description.json"))
-            if len(data_description_json) > 0:
-                data_description_json = data_description_json[0]
-                with open(data_description_json, "r") as f:
-                    data_description = json.load(f)
-                acquisition_name = data_description["name"]
-
-        config = logging_config.get("logging_cfg")
-        if config is not None and len(config) == 0:
-            config = None
-        log_schema.setup_logging(
-            config=config,
-            model={
-                "pipeline_name": pipeline_name,
-                "acquisition_name": acquisition_name,
-                "process_name": "Collect results",
-            },
-        )
-    else:
-        raise ValueError(f"Unsupported logging package: {logging_config['package']}")
-
-
 def run() -> None:
     """Entrypoint for the results collector capsule."""
     ###### COLLECT RESULTS #########
@@ -197,9 +140,57 @@ def run() -> None:
     process_name = args.static_process_name or args.process_name
     pipeline_data_path = args.pipeline_data_path
     pipeline_results_path = args.pipeline_results_path
+    PARAMS = args.params
+
+    if PARAMS is not None:
+        try:
+            # try to parse the JSON string first to avoid file name too long error
+            collector_params = json.loads(PARAMS)
+        except json.JSONDecodeError:
+            if Path(PARAMS).is_file():
+                with open(PARAMS, "r") as f:
+                    collector_params = json.load(f)
+            else:
+                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
+    else:
+        with open("params.json", "r") as f:
+            collector_params = json.load(f)
+
+    # TODO: temporary - remove from params.json when logging is distributed by pipeline
+    LOGGING = collector_params.pop("logging", None)
 
     # setup logging before any other logging call
-    setup_logging(args.logging)
+    if LOGGING is None:
+        logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
+    else:
+        if LOGGING["package"] == "logging":
+            logging_cfg = LOGGING.get("logging_cfg", {})
+            logging.basicConfig(stream=sys.stdout, **logging_cfg)
+        elif LOGGING["package"] == "log-schema":
+            import log_schema
+
+            pipeline_name = LOGGING.get("pipeline_name", "AIND Ephys Pipeline")
+            acquisition_name = LOGGING.get("acquisition_name", None)
+
+            if acquisition_name is None:
+                data_description_json = list(data_folder.glob("**/data_description.json"))
+                if len(data_description_json) > 0:
+                    data_description_json = data_description_json[0]
+                    with open(data_description_json, "r") as f:
+                        data_description = json.load(f)
+                    acquisition_name = data_description["name"]
+
+            config = LOGGING.get("logging_cfg")
+            if config is not None and len(config) == 0:
+                config = None
+            log_schema.setup_logging(
+                config=config,
+                model={
+                    "pipeline_name": pipeline_name,
+                    "acquisition_name": acquisition_name,
+                    "process_name": "Ephys visualization"
+                }
+            )
 
     logging.info("Begin processing...", extra={"event_type": "stage_start"})
 
