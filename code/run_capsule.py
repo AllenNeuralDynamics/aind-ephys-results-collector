@@ -34,11 +34,8 @@ from aind_data_schema.core.data_description import Funding, DataDescription
 from aind_data_schema.core.processing import (
     DataProcess,
     Processing,
-    ProcessName,
-    ProcessStage,
-    ResourceTimestamped,
-    ResourceUsage,
 )
+from aind_data_schema import __version__ as ADS_VERSION
 
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
@@ -212,6 +209,7 @@ def run() -> None:
         spikesorted_folder = data_folder / "spikesorting_pipeline_output_test"
         curated_folder = data_folder / "curation_pipeline_output_test"
         visualization_folder = data_folder / "visualization_pipeline_output_test"
+        phy_folder = data_folder / "phy_pipeline_output_test"
 
         test_folders = [
             preprocessed_folder,
@@ -219,11 +217,14 @@ def run() -> None:
             postprocessed_folder,
             curated_folder,
             visualization_folder,
+            phy_folder,
         ]
 
         data_process_files = []
         for test_folder_name in test_folders:
             test_folder = data_folder / test_folder_name
+            if not test_folder.is_dir():
+                continue
             data_process_files.extend(
                 [p for p in test_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")]
             )
@@ -233,6 +234,7 @@ def run() -> None:
         spikesorted_folder = data_folder
         curated_folder = data_folder
         visualization_folder = data_folder
+        phy_folder = data_folder
         data_process_files = [
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
         ]
@@ -340,14 +342,11 @@ def run() -> None:
         analyzer_output_folder = None
         logging.info(f"\t{recording_name}")
         try:
-            # we first check if the input postprocessed folder is valid
-            # this will raise an Exception if it fails, preventing to copy
-            # to results
-            analyzer = si.load(postprocessed_input_folder, load_extensions=False)
             analyzer_output_folder = postprocessed_results_folder / recording_folder_name
             shutil.copytree(postprocessed_input_folder, analyzer_output_folder)
-            # we reload the analyzer to results to be able to append properties
-            analyzer = si.load(analyzer_output_folder, load_extensions=False)
+            # We reload the analyzer to results to be able to append properties
+            # This will also validate that the analyzer is valid and can be loaded.
+            analyzer = si.load(analyzer_output_folder, load_extensions=False, lazy=True)
         except:
             logging.info(f"\t\tSpike sorting failed on {recording_name}. Skipping collection")
             # Clean up any partially copied results
@@ -371,6 +370,7 @@ def run() -> None:
                         analyzer.set_sorting_property("decoder_label", values, save=True)
                     if label == "unitrefine_probability":
                         analyzer.set_sorting_property("decoder_probability", values, save=True)
+        logging.info(f"\tSaving curated analyzer to {curated_results_folder / recording_name}")
         _ = analyzer.sorting.save(folder=curated_results_folder / recording_name)
 
         curation_json_file = curated_folder / f"curation_{recording_name}.json"
@@ -448,6 +448,20 @@ def run() -> None:
         for viz_folder in visualization_folders:
             recording_name = viz_folder.name[len("visualization_") :]
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
+
+    # PHY
+    if phy_folder.is_dir():
+        phy_folders = [
+            p for p in phy_folder.iterdir() if p.is_dir() and p.name.startswith("phy_")
+        ]
+        for phy_input_folder in phy_folders:
+            if (phy_input_folder / "error.txt").is_file():
+                continue
+            recording_name = phy_input_folder.name[len("phy_") :]
+            logging.info(f"\tCopying phy folder for {recording_name}")
+            phy_output_folder = results_folder / "phy" / recording_name
+            phy_output_folder.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(phy_input_folder, phy_output_folder, dirs_exist_ok=True)
 
     # PROCESSING
     logging.info("Generating processing metadata")
