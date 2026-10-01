@@ -580,6 +580,9 @@ def run() -> None:
             data_level=DataLevel.DERIVED,
         )
 
+    # Force derived data description modalities to be ECEPHYS only
+    derived_data_description.modalities = [Modality.ECEPHYS]
+
     # save processing files to output
     derived_data_description.write_standard_file(output_directory=results_folder)
 
