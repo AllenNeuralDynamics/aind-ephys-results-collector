@@ -40,9 +40,10 @@ from aind_data_schema import __version__ as ADS_VERSION
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 
-PIPELINE_NAME = "AIND Ephys Pipeline"
-PIPELINE_URL = os.getenv("PIPELINE_URL", "")
-PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
+
+PIPELINE_NAME = os.getenv("PIPELINE_NAME", "AIND Ephys Pipeline")
+PIPELINE_URL = os.getenv("PIPELINE_URL", "https://github.com/AllenNeuralDynamics/aind-ephys-pipeline")
+PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "1.0")
 
 
 data_folder = Path("../data/")
