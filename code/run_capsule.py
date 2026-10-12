@@ -444,8 +444,10 @@ def run() -> None:
     ]
     if len(visualization_folders) > 0:
         visualization_output_folder = results_folder / "visualization"
-        visualization_output_folder.mkdir(exist_ok=True)
         for viz_folder in visualization_folders:
+            if (viz_folder / "error.txt").is_file():
+                continue
+            visualization_output_folder.mkdir(exist_ok=True)
             recording_name = viz_folder.name[len("visualization_") :]
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
 
