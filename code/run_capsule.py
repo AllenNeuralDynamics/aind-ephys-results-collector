@@ -157,6 +157,13 @@ def run() -> None:
     LOGGING = collector_params.pop("logging", None)
 
     # setup logging before any other logging call
+    acquisition_name = None
+    data_description_json = list(data_folder.glob("**/data_description.json"))
+    if len(data_description_json) > 0:
+        data_description_json = data_description_json[0]
+        with open(data_description_json, "r") as f:
+            data_description = json.load(f)
+        acquisition_name = data_description["name"]
     if LOGGING is None:
         logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
     else:
@@ -167,15 +174,7 @@ def run() -> None:
             import log_schema
 
             pipeline_name = LOGGING.get("pipeline_name", "AIND Ephys Pipeline")
-            acquisition_name = LOGGING.get("acquisition_name", None)
-
-            if acquisition_name is None:
-                data_description_json = list(data_folder.glob("**/data_description.json"))
-                if len(data_description_json) > 0:
-                    data_description_json = data_description_json[0]
-                    with open(data_description_json, "r") as f:
-                        data_description = json.load(f)
-                    acquisition_name = data_description["name"]
+            acquisition_name = LOGGING.get("acquisition_name", acquisition_name)
 
             config = LOGGING.get("logging_cfg")
             if config is not None and len(config) == 0:
@@ -585,7 +584,7 @@ def run() -> None:
         # make from scratch:
         now = datetime.now(UTC)
         derived_data_description = DataDescription(
-            name=build_data_name(subject_id, creation_datetime=now),
+            name=build_data_name(f"{acquisition_name}_{process_name}", creation_datetime=now),
             modalities=[Modality.ECEPHYS],
             subject_id=subject_id,
             creation_time=now,
