@@ -409,9 +409,14 @@ def run() -> None:
                 relative_to=pipeline_postprocessed_output
             )
             # update the "ecephys_session" field in the recording_dict, if present
-            recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
-            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-            recording_dict_mapped = json.loads(recording_dict_str)
+            # (in-place on string values, so it works for non-JSON-serializable dicts, e.g. Pickle codec)
+            session_updates = [
+                (it.access_path, it.value.replace("ecephys_session", session_name))
+                for it in extractor_dict_iterator(recording_dict_mapped)
+                if isinstance(it.value, str) and "ecephys_session" in it.value
+            ]
+            for access_path, new_value in session_updates:
+                set_value_in_extractor_dict(recording_dict_mapped, access_path, new_value)
             # remove the old recording and add the new one
             del analyzer_root["recording"]
             zarr_rec = np.array([recording_dict_mapped], dtype=object)
