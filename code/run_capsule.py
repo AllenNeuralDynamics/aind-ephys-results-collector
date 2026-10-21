@@ -9,6 +9,7 @@ import argparse
 from pathlib import Path
 import shutil
 import json
+import pickle
 import time
 from datetime import datetime, timezone, UTC
 from packaging.version import parse
@@ -267,18 +268,25 @@ def run() -> None:
 
     # PREPROCESSED
     logging.info("Copying preprocessed folders to results:")
-    preprocessed_json_files = [
-        p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")
+    preprocessed_files = [
+        p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and
+        (p.name.endswith(".json") or p.name.endswith(".pkl"))
     ]
     (results_folder / "preprocessed").mkdir(exist_ok=True)
-    for preprocessed_file in preprocessed_json_files:
-        recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
+    for preprocessed_file in preprocessed_files:
+        # preprocessed_files can be JSON or PKL
+        is_json = preprocessed_file.name.endswith(".json")
+        recording_file_name = preprocessed_file.name[len("preprocessed_") :]
         recording_name = preprocessed_file.stem[len("preprocessed_") :]
-        recording_output_json_file = preprocessed_results_folder / recording_json_file_name
+        recording_output_file = preprocessed_results_folder / recording_file_name
         logging.info(f"\t{recording_name}")
 
-        with open(preprocessed_file, "r") as f:
-            recording_dict = json.load(f)
+        if is_json:
+            with open(preprocessed_file, "r") as f:
+                recording_dict = json.load(f)
+        else:
+            with open(preprocessed_file, "rb") as f:
+                recording_dict = pickle.load(f)
 
         # running locally or on HPC, we need to resolve symlinks in the recording_dict
         if pipeline_data_path is not None:
@@ -288,11 +296,24 @@ def run() -> None:
                 base_folder=data_folder,
                 relative_to=pipeline_data_path
             )
-        recording_dict_str = json.dumps(recording_dict, indent=4)
-        if "ecephys_session" in recording_dict_str:
+        # update the "ecephys_session" field in the recording_dict, if present
+        # (in-place on string values, so it works for non-JSON-serializable dicts, e.g. Pickle codec)
+        session_updates = [
+            (it.access_path, it.value.replace("ecephys_session", session_name))
+            for it in extractor_dict_iterator(recording_dict)
+            if isinstance(it.value, str) and "ecephys_session" in it.value
+        ]
+        if len(session_updates) > 0:
             logging.info(f"\tRemapping preprocessed recording: 'ecephys_session' -> '{session_name}'")
-            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-        recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
+        for access_path, new_value in session_updates:
+            set_value_in_extractor_dict(recording_dict, access_path, new_value)
+
+        if is_json:
+            with open(recording_output_file, "w", encoding="utf8") as f:
+                json.dump(recording_dict, f, indent=4)
+        else:
+            with open(recording_output_file, "wb") as f:
+                pickle.dump(recording_dict, f)
 
     # MOTION
     motion_folders = [
