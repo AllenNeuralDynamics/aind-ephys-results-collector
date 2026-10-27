@@ -53,6 +53,10 @@ PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
 
 data_folder = Path("../data/")
 results_folder = Path("../results/")
+scratch_folder = Path("../scratch/")
+
+# Session metadata files job dispatch downloads into ecephys_session
+SESSION_METADATA_FILES = ["data_description", "subject", "rig", "session", "processing"]
 
 
 # Create an argument parser
@@ -105,6 +109,37 @@ def remap_extractor_path(recording_dict, base_folder, relative_to=None):
                 new_path = absolute_path
             set_value_in_extractor_dict(recording_dict, access_path, str(new_path))
     return recording_dict
+
+
+def fetch_session_metadata(session_s3_path: str, folder: Path) -> tuple[list[str], list[str]]:
+    """Download the session's metadata JSON files from S3 into folder, as job dispatch does.
+
+    Each file is tried with the capsule's credentials, then unsigned (public bucket).
+    Returns (downloaded file names, messages about the files that could not be downloaded).
+    """
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.client import Config
+
+    bucket_name, _, session_prefix = session_s3_path.removeprefix("s3://").rstrip("/").partition("/")
+    clients = [boto3.client("s3"), boto3.client("s3", config=Config(signature_version=UNSIGNED))]
+    folder.mkdir(parents=True, exist_ok=True)
+    downloaded, failed = [], []
+    for metadata_file_name in SESSION_METADATA_FILES:
+        key = f"{session_prefix}/{metadata_file_name}.json"
+        local_file = str(folder / f"{metadata_file_name}.json")
+        error = None
+        for client in clients:
+            try:
+                client.download_file(bucket_name, key, local_file)
+                downloaded.append(f"{metadata_file_name}.json")
+                error = None
+                break
+            except Exception as e:
+                error = e
+        if error is not None:
+            failed.append(f"Could not download s3://{bucket_name}/{key}: {error}")
+    return downloaded, failed
 
 
 def fix_process_names(process_dicts: list):
@@ -190,9 +225,58 @@ if __name__ == "__main__":
             p for p in data_folder.iterdir() if "data_process" in p.name and p.name.endswith(".json")
         ]
 
+    # Logged once logging is set up, which needs the session metadata
+    data_contents = sorted(data_folder.iterdir())
+    data_kinds = {}
+    for p in data_contents:
+        kind = ("[dir] " if p.is_dir() else "") + p.name.split("_")[0] + "*" + p.suffix
+        data_kinds[kind] = data_kinds.get(kind, 0) + 1
+    startup_messages = [
+        f"data contents ({len(data_contents)} items): "
+        + ", ".join(f"{count} × {kind}" for kind, count in sorted(data_kinds.items())),
+        f"data folders: {[p.name for p in data_contents if p.is_dir()]}",
+    ]
+
+    # Job dispatch's job JSONs carry session_name and session_s3_path. Other capsules
+    # (e.g. DARTsort postprocess) also write job_*.json files, without them
+    job_dicts = []
+    for json_file in sorted(data_folder.iterdir()):
+        if "job" in json_file.name and json_file.suffix == ".json":
+            try:
+                job_dict = json.loads(json_file.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(job_dict, dict) and "session_name" in job_dict:
+                job_dicts.append(job_dict)
+
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
-    assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
-    ecephys_session_folder = ecephys_sessions[0]
+    assert len(ecephys_sessions) <= 1, f"Attach one session at a time {ecephys_sessions}"
+    metadata_missing = None
+    if ecephys_sessions:
+        ecephys_session_folder = ecephys_sessions[0]
+    else:
+        # The session folder did not reach this capsule: fetch its metadata from S3
+        ecephys_session_folder = scratch_folder / "ecephys_session"
+        ecephys_session_folder.mkdir(parents=True, exist_ok=True)
+        session_s3_path = next(
+            (d["session_s3_path"] for d in job_dicts if d.get("session_s3_path")), None
+        )
+        if session_s3_path is None:
+            metadata_missing = (
+                "No ecephys session folder in data/ and no session_s3_path in the job "
+                "JSON files to download its metadata from"
+            )
+        else:
+            downloaded, failed = fetch_session_metadata(session_s3_path, ecephys_session_folder)
+            startup_messages.append(
+                f"No ecephys session folder in data/: downloaded {downloaded} from {session_s3_path}"
+            )
+            startup_messages.extend(failed)
+            if not {"data_description.json", "subject.json"} & set(downloaded):
+                metadata_missing = (
+                    f"No ecephys session folder in data/, and neither data_description.json "
+                    f"nor subject.json could be downloaded from {session_s3_path}"
+                )
 
     if HAVE_AIND_LOG_UTILS:
         # look for subject.json and data_description.json files
@@ -217,13 +301,23 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 
     logging.info("\n\nCOLLECTING RESULTS")
+    for message in startup_messages:
+        logging.info(message)
+    if metadata_missing is not None:
+        # The results are still collected, with placeholder metadata (unknown
+        # subject, generated name); the marker file flags the asset for fixing
+        logging.warning(
+            f"{metadata_missing}. Collecting results with placeholder metadata; see "
+            "metadata_missing.txt"
+        )
+        (results_folder / "metadata_missing.txt").write_text(
+            f"{metadata_missing}.\n"
+            "data_description.json, subject.json and processing.json of this asset were "
+            "generated without the session's metadata and need to be replaced.\n"
+        )
 
-    json_files = [p for p in data_folder.iterdir() if "job" in p.name and p.suffix == ".json"]
-    # load session_name from any JSON file
-    if len(json_files) > 0:
-        with open(json_files[0], "r") as f:
-            job_dict = json.load(f)
-        session_name = job_dict["session_name"]
+    if len(job_dicts) > 0:
+        session_name = job_dicts[0]["session_name"]
         logging.info(f"Loaded session name from JSON files: {session_name}")
     else:
         session_name = ecephys_session_folder.name
