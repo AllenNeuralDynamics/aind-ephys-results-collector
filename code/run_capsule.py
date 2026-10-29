@@ -5,7 +5,6 @@ warnings.filterwarnings("ignore")
 import os
 import re
 import sys
-import argparse
 from pathlib import Path
 import shutil
 import json
@@ -50,29 +49,7 @@ data_folder = Path("../data/")
 results_folder = Path("../results/")
 
 
-# Create an argument parser
-parser = argparse.ArgumentParser(description="Collect results from Ephys pipeline")
-
-process_name_group = parser.add_mutually_exclusive_group()
-process_name_help = "Process name to use in the derived data description."
-process_name_group.add_argument(
-    "--process-name", default="sorted", help=process_name_help
-)
-process_name_group.add_argument("static_process_name", nargs="?", help=process_name_help)
-
-parser.add_argument(
-    "--pipeline-data-path",
-    default=None,
-    help="Path to the data folder containing the ecephys session.",
-)
-
-parser.add_argument(
-    "--pipeline-results-path",
-    default=None,
-    help="Path to the results folder where the collected results will be saved.",
-)
-
-parser.add_argument("--params", default=None, help="Path to the parameters file or JSON string. If given, it will override all other arguments.")
+PARAMS_FILE = Path("../params.json")
 
 
 def remap_extractor_path(recording_dict, base_folder, relative_to=None):
@@ -134,28 +111,15 @@ def run() -> None:
     """Entrypoint for the results collector capsule."""
     ###### COLLECT RESULTS #########
     t_collection_start = time.perf_counter()
-    args = parser.parse_args()
-    process_name = args.static_process_name or args.process_name
-    pipeline_data_path = args.pipeline_data_path
-    pipeline_results_path = args.pipeline_results_path
-    PARAMS = args.params
-
-    if PARAMS is not None:
-        try:
-            # try to parse the JSON string first to avoid file name too long error
-            collector_params = json.loads(PARAMS)
-        except json.JSONDecodeError:
-            if Path(PARAMS).is_file():
-                with open(PARAMS, "r") as f:
-                    collector_params = json.load(f)
-            else:
-                raise ValueError(f"Invalid parameters: {PARAMS} is not a valid JSON string or file path")
-    else:
-        with open("params.json", "r") as f:
-            collector_params = json.load(f)
-
-    # TODO: temporary - remove from params.json when logging is distributed by pipeline
-    LOGGING = collector_params.pop("logging", None)
+    if not PARAMS_FILE.is_file():
+        raise ValueError(f"Parameters file not found: {PARAMS_FILE}")
+    with open(PARAMS_FILE, "r") as f:
+        full_params = json.load(f)
+    collector_params = full_params.get("results_collector", {})
+    logging_params = full_params.get("logging", None)
+    process_name = collector_params.get("process_name", "sorted")
+    pipeline_data_path = collector_params.get("pipeline_data_path", None)
+    pipeline_results_path = collector_params.get("pipeline_results_path", None)
 
     # setup logging before any other logging call
     acquisition_name = None
@@ -165,19 +129,19 @@ def run() -> None:
         with open(data_description_json, "r") as f:
             data_description = json.load(f)
         acquisition_name = data_description["name"]
-    if LOGGING is None:
+    if logging_params is None:
         logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
     else:
-        if LOGGING["package"] == "logging":
-            logging_cfg = LOGGING.get("logging_cfg", {})
+        if logging_params["package"] == "logging":
+            logging_cfg = logging_params.get("logging_cfg", {})
             logging.basicConfig(stream=sys.stdout, **logging_cfg)
-        elif LOGGING["package"] == "log-schema":
+        elif logging_params["package"] == "log-schema":
             import log_schema
 
-            pipeline_name = LOGGING.get("pipeline_name", "AIND Ephys Pipeline")
-            acquisition_name = LOGGING.get("acquisition_name", acquisition_name)
+            pipeline_name = logging_params.get("pipeline_name", "AIND Ephys Pipeline")
+            acquisition_name = logging_params.get("acquisition_name", acquisition_name)
 
-            config = LOGGING.get("logging_cfg")
+            config = logging_params.get("logging_cfg")
             if config is not None and len(config) == 0:
                 config = None
             log_schema.setup_logging(

@@ -22,7 +22,7 @@ In addition, the original session data (e.g., "ecephys_664438_2023-04-12_14-59-5
 
 ### Parameters
 
-The `code/run` script takes no arguments.
+Parameters are read from a `params.json` file that must be in the root folder of the capsule (next to `code/`, i.e. `../params.json` from `code/`): the `results_collector` section (`process_name`, `pipeline_data_path`, `pipeline_results_path`) and `logging`.
 
 
 ### Output
