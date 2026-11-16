@@ -20,6 +20,7 @@ import zarr
 # SpikeInterface
 import spikeinterface as si
 from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in_extractor_dict
+from spikeinterface.core.zarr_tools import read_encoded_array, write_json_array
 
 # AIND
 from aind_data_schema_models.modalities import Modality
@@ -358,7 +359,12 @@ if __name__ == "__main__":
         AWS_BATCH_EXECUTOR = os.getenv("AWS_BATCH_JOB_ID") is not None
 
         analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-        recording_dict = analyzer_root.attrs["recording"]
+        # spikeinterface zarr v3 stores the recording as an encoded uint8 array, older versions as an attribute
+        recording_in_array = "recording" in analyzer_root
+        if recording_in_array:
+            recording_dict = read_encoded_array(analyzer_root["recording"])
+        else:
+            recording_dict = analyzer_root.attrs["recording"]
         if pipeline_results_path is not None:
             # here we need to resolve the recording path, make it relative to the pipeline results path
             pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
@@ -379,7 +385,11 @@ if __name__ == "__main__":
         recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
         recording_dict_mapped = json.loads(recording_dict_str)
         # remove the old recording and add the new one
-        analyzer_root.attrs["recording"] = recording_dict_mapped
+        if recording_in_array:
+            del analyzer_root["recording"]
+            write_json_array(analyzer_root, "recording", recording_dict_mapped)
+        else:
+            analyzer_root.attrs["recording"] = recording_dict_mapped
 
     # VISUALIZATION
     logging.info("Copying visualization outputs to results:")
