@@ -5,10 +5,10 @@ warnings.filterwarnings("ignore")
 import os
 import re
 import sys
-import argparse
 from pathlib import Path
 import shutil
 import json
+import pickle
 import time
 from datetime import datetime, timezone, UTC
 from packaging.version import parse
@@ -23,6 +23,7 @@ from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in
 from spikeinterface.core.zarr_tools import read_encoded_array, write_json_array
 
 # AIND
+from aind_data_schema import __version__ as ADS_VERSION
 from aind_data_schema_models.modalities import Modality
 from aind_data_schema_models.organizations import Organization
 from aind_data_schema_models.data_name_patterns import DataLevel, build_data_name
@@ -39,13 +40,6 @@ from aind_data_schema import __version__ as ADS_VERSION
 from aind_metadata_upgrader.data_description.v1v2 import DataDescriptionV1V2
 from aind_metadata_upgrader.processing.v1v2 import ProcessingV1V2
 
-try:
-    from aind_log_utils import log
-
-    HAVE_AIND_LOG_UTILS = True
-except ImportError:
-    HAVE_AIND_LOG_UTILS = False
-
 PIPELINE_NAME = "AIND Ephys Pipeline"
 PIPELINE_URL = os.getenv("PIPELINE_URL", "")
 PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "")
@@ -55,27 +49,7 @@ data_folder = Path("../data/")
 results_folder = Path("../results/")
 
 
-# Create an argument parser
-parser = argparse.ArgumentParser(description="Collect results from Ephys pipeline")
-
-process_name_group = parser.add_mutually_exclusive_group()
-process_name_help = "Process name to use in the derived data description."
-process_name_group.add_argument(
-    "--process-name", default="sorted", help=process_name_help
-)
-process_name_group.add_argument("static_process_name", nargs="?", help=process_name_help)
-
-parser.add_argument(
-    "--pipeline-data-path",
-    default=None,
-    help="Path to the data folder containing the ecephys session.",
-)
-
-parser.add_argument(
-    "--pipeline-results-path",
-    default=None,
-    help="Path to the results folder where the collected results will be saved.",
-)
+PARAMS_FILE = Path("../params.json")
 
 
 def remap_extractor_path(recording_dict, base_folder, relative_to=None):
@@ -133,14 +107,53 @@ def fix_process_names(process_dicts: list):
         return process_dicts
 
 
-
-if __name__ == "__main__":
+def run() -> None:
+    """Entrypoint for the results collector capsule."""
     ###### COLLECT RESULTS #########
     t_collection_start = time.perf_counter()
-    args = parser.parse_args()
-    process_name = args.static_process_name or args.process_name
-    pipeline_data_path = args.pipeline_data_path
-    pipeline_results_path = args.pipeline_results_path
+    if not PARAMS_FILE.is_file():
+        raise ValueError(f"Parameters file not found: {PARAMS_FILE}")
+    with open(PARAMS_FILE, "r") as f:
+        full_params = json.load(f)
+    collector_params = full_params.get("results_collector", {})
+    logging_params = full_params.get("logging", None)
+    process_name = collector_params.get("process_name", "sorted")
+    pipeline_data_path = collector_params.get("pipeline_data_path", None)
+    pipeline_results_path = collector_params.get("pipeline_results_path", None)
+
+    # setup logging before any other logging call
+    acquisition_name = None
+    data_description_json = list(data_folder.glob("**/data_description.json"))
+    if len(data_description_json) > 0:
+        data_description_json = data_description_json[0]
+        with open(data_description_json, "r") as f:
+            data_description = json.load(f)
+        acquisition_name = data_description["name"]
+    if logging_params is None:
+        logging.basicConfig(level="INFO", stream=sys.stdout, format="%(message)s")
+    else:
+        if logging_params["package"] == "logging":
+            logging_cfg = logging_params.get("logging_cfg", {})
+            logging.basicConfig(stream=sys.stdout, **logging_cfg)
+        elif logging_params["package"] == "log-schema":
+            import log_schema
+
+            pipeline_name = logging_params.get("pipeline_name", "AIND Ephys Pipeline")
+            acquisition_name = logging_params.get("acquisition_name", acquisition_name)
+
+            config = logging_params.get("logging_cfg")
+            if config is not None and len(config) == 0:
+                config = None
+            log_schema.setup_logging(
+                config=config,
+                model={
+                    "pipeline_name": pipeline_name,
+                    "acquisition_name": acquisition_name,
+                    "process_name": "Collect Results"
+                }
+            )
+
+    logging.info("Begin processing...", extra={"event_type": "stage_start"})
 
     # sanitize process_name
     _bad_chars_pattern = re.compile(r'[<>:;"/|? \\_]')
@@ -194,28 +207,6 @@ if __name__ == "__main__":
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
     ecephys_session_folder = ecephys_sessions[0]
 
-    if HAVE_AIND_LOG_UTILS:
-        # look for subject.json and data_description.json files
-        subject_json = ecephys_session_folder / "subject.json"
-        subject_id = "undefined"
-        if subject_json.is_file():
-            subject_data = json.load(open(subject_json, "r"))
-            subject_id = subject_data["subject_id"]
-
-        data_description_json = ecephys_session_folder / "data_description.json"
-        session_name = "undefined"
-        if data_description_json.is_file():
-            data_description = json.load(open(data_description_json, "r"))
-            session_name = data_description["name"]
-
-        log.setup_logging(
-            "Collect Results Ecephys",
-            subject_id=subject_id,
-            asset_name=session_name,
-        )
-    else:
-        logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
-
     logging.info("\n\nCOLLECTING RESULTS")
 
     json_files = [p for p in data_folder.iterdir() if "job" in p.name and p.suffix == ".json"]
@@ -241,18 +232,25 @@ if __name__ == "__main__":
 
     # PREPROCESSED
     logging.info("Copying preprocessed folders to results:")
-    preprocessed_json_files = [
-        p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and p.name.endswith(".json")
+    preprocessed_files = [
+        p for p in preprocessed_folder.iterdir() if "preprocessed_" in p.name and
+        (p.name.endswith(".json") or p.name.endswith(".pkl"))
     ]
     (results_folder / "preprocessed").mkdir(exist_ok=True)
-    for preprocessed_file in preprocessed_json_files:
-        recording_json_file_name = preprocessed_file.name[len("preprocessed_") :]
+    for preprocessed_file in preprocessed_files:
+        # preprocessed_files can be JSON or PKL
+        is_json = preprocessed_file.name.endswith(".json")
+        recording_file_name = preprocessed_file.name[len("preprocessed_") :]
         recording_name = preprocessed_file.stem[len("preprocessed_") :]
-        recording_output_json_file = preprocessed_results_folder / recording_json_file_name
+        recording_output_file = preprocessed_results_folder / recording_file_name
         logging.info(f"\t{recording_name}")
 
-        with open(preprocessed_file, "r") as f:
-            recording_dict = json.load(f)
+        if is_json:
+            with open(preprocessed_file, "r") as f:
+                recording_dict = json.load(f)
+        else:
+            with open(preprocessed_file, "rb") as f:
+                recording_dict = pickle.load(f)
 
         # running locally or on HPC, we need to resolve symlinks in the recording_dict
         if pipeline_data_path is not None:
@@ -262,11 +260,24 @@ if __name__ == "__main__":
                 base_folder=data_folder,
                 relative_to=pipeline_data_path
             )
-        recording_dict_str = json.dumps(recording_dict, indent=4)
-        if "ecephys_session" in recording_dict_str:
+        # update the "ecephys_session" field in the recording_dict, if present
+        # (in-place on string values, so it works for non-JSON-serializable dicts, e.g. Pickle codec)
+        session_updates = [
+            (it.access_path, it.value.replace("ecephys_session", session_name))
+            for it in extractor_dict_iterator(recording_dict)
+            if isinstance(it.value, str) and "ecephys_session" in it.value
+        ]
+        if len(session_updates) > 0:
             logging.info(f"\tRemapping preprocessed recording: 'ecephys_session' -> '{session_name}'")
-            recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
-        recording_output_json_file.write_text(recording_dict_str, encoding="utf8")
+        for access_path, new_value in session_updates:
+            set_value_in_extractor_dict(recording_dict, access_path, new_value)
+
+        if is_json:
+            with open(recording_output_file, "w", encoding="utf8") as f:
+                json.dump(recording_dict, f, indent=4)
+        else:
+            with open(recording_output_file, "wb") as f:
+                pickle.dump(recording_dict, f)
 
     # MOTION
     motion_folders = [
@@ -414,8 +425,10 @@ if __name__ == "__main__":
     ]
     if len(visualization_folders) > 0:
         visualization_output_folder = results_folder / "visualization"
-        visualization_output_folder.mkdir(exist_ok=True)
         for viz_folder in visualization_folders:
+            if (viz_folder / "error.txt").is_file():
+                continue
+            visualization_output_folder.mkdir(exist_ok=True)
             recording_name = viz_folder.name[len("visualization_") :]
             shutil.copytree(viz_folder, visualization_output_folder / recording_name)
 
@@ -553,7 +566,7 @@ if __name__ == "__main__":
         # make from scratch:
         now = datetime.now(UTC)
         derived_data_description = DataDescription(
-            name=build_data_name(subject_id, creation_datetime=now),
+            name=build_data_name(f"{acquisition_name}_{process_name}", creation_datetime=now),
             modalities=[Modality.ECEPHYS],
             subject_id=subject_id,
             creation_time=now,
@@ -563,6 +576,9 @@ if __name__ == "__main__":
             project_name="unknown",
             data_level=DataLevel.DERIVED,
         )
+
+    # Force derived data description modalities to be ECEPHYS only
+    derived_data_description.modalities = [Modality.ECEPHYS]
 
     # save processing files to output
     derived_data_description.write_standard_file(output_directory=results_folder)
@@ -583,3 +599,12 @@ if __name__ == "__main__":
     t_collection_end = time.perf_counter()
     elapsed_time_collection = np.round(t_collection_end - t_collection_start, 2)
     logging.info(f"COLLECTION time: {elapsed_time_collection}s")
+    logging.info("Pipeline stage completed", extra={"event_type": "stage_complete"})
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except Exception as e:
+        logging.exception("Pipeline stage failed", extra={"event_type": "stage_error"})
+        raise
