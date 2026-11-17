@@ -16,11 +16,11 @@ import numpy as np
 import pandas as pd
 import logging
 import zarr
-import numcodecs
 
 # SpikeInterface
 import spikeinterface as si
 from spikeinterface.core.core_tools import extractor_dict_iterator, set_value_in_extractor_dict
+from spikeinterface.core.zarr_tools import read_encoded_array, write_json_array
 
 # AIND
 from aind_data_schema import __version__ as ADS_VERSION
@@ -370,45 +370,39 @@ def run() -> None:
         AWS_BATCH_EXECUTOR = os.getenv("AWS_BATCH_JOB_ID") is not None
 
         analyzer_root = zarr.open(analyzer_output_folder, mode="r+")
-        recording_root = analyzer_root["recording"]
-        object_codec = None
-        if isinstance(recording_root.filters[0], numcodecs.JSON):
-            object_codec = numcodecs.JSON()
-        elif isinstance(recording_root.filters[0], numcodecs.Pickle):
-            object_codec = numcodecs.Pickle()
-        if object_codec is not None:
-            recording_dict = recording_root[0]
-            if pipeline_results_path is not None:
-                # here we need to resolve the recording path, make it relative to the pipeline results path
-                pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
-            elif AWS_BATCH_EXECUTOR:
-                # here we need to add a new subfolder for the session name
-                pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
-            else:
-                # here we just add the postprocessed folder to the results folder
-                pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
-            logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
-            recording_dict_mapped = remap_extractor_path(
-                recording_dict=recording_dict,
-                base_folder=postprocessed_input_folder,
-                relative_to=pipeline_postprocessed_output
-            )
-            # update the "ecephys_session" field in the recording_dict, if present
-            # (in-place on string values, so it works for non-JSON-serializable dicts, e.g. Pickle codec)
-            session_updates = [
-                (it.access_path, it.value.replace("ecephys_session", session_name))
-                for it in extractor_dict_iterator(recording_dict_mapped)
-                if isinstance(it.value, str) and "ecephys_session" in it.value
-            ]
-            for access_path, new_value in session_updates:
-                set_value_in_extractor_dict(recording_dict_mapped, access_path, new_value)
-            # remove the old recording and add the new one
-            del analyzer_root["recording"]
-            zarr_rec = np.array([recording_dict_mapped], dtype=object)
-            analyzer_root.create_dataset("recording", data=zarr_rec, object_codec=object_codec)
-            zarr.consolidate_metadata(analyzer_root.store)
+        # spikeinterface zarr v3 stores the recording as an encoded uint8 array, older versions as an attribute
+        recording_in_array = "recording" in analyzer_root
+        if recording_in_array:
+            recording_dict = read_encoded_array(analyzer_root["recording"])
         else:
-            logging.info(f"Unsupported recording object codec: {recording_root.filters[0]}. Cannot remap recording path")
+            recording_dict = analyzer_root.attrs["recording"]
+        if pipeline_results_path is not None:
+            # here we need to resolve the recording path, make it relative to the pipeline results path
+            pipeline_postprocessed_output = Path(pipeline_results_path) / "postprocessed" / recording_folder_name
+        elif AWS_BATCH_EXECUTOR:
+            # here we need to add a new subfolder for the session name
+            pipeline_postprocessed_output = results_folder / "postprocessed" / session_name / recording_folder_name
+        else:
+            # here we just add the postprocessed folder to the results folder
+            pipeline_postprocessed_output = results_folder / "postprocessed" / recording_folder_name
+        logging.info(f"\t\tRemapping recording path for postprocessed to {pipeline_postprocessed_output}")
+        recording_dict_mapped = remap_extractor_path(
+            recording_dict=recording_dict,
+            base_folder=postprocessed_input_folder,
+            relative_to=pipeline_postprocessed_output
+        )
+        # update the "ecephys_session" field in the recording_dict, if present
+        recording_dict_str = json.dumps(recording_dict_mapped, indent=4)
+        recording_dict_str = recording_dict_str.replace("ecephys_session", session_name)
+        recording_dict_mapped = json.loads(recording_dict_str)
+        # remove the old recording and add the new one
+        if recording_in_array:
+            del analyzer_root["recording"]
+            write_json_array(analyzer_root, "recording", recording_dict_mapped)
+        else:
+            analyzer_root.attrs["recording"] = recording_dict_mapped
+        # keep consolidated metadata in sync, otherwise si.load can't find the new recording
+        zarr.consolidate_metadata(analyzer_root.store)
 
     # VISUALIZATION
     logging.info("Copying visualization outputs to results:")
