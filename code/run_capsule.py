@@ -401,6 +401,8 @@ def run() -> None:
             write_json_array(analyzer_root, "recording", recording_dict_mapped)
         else:
             analyzer_root.attrs["recording"] = recording_dict_mapped
+        # keep consolidated metadata in sync, otherwise si.load can't find the new recording
+        zarr.consolidate_metadata(analyzer_root.store)
 
     # VISUALIZATION
     logging.info("Copying visualization outputs to results:")
