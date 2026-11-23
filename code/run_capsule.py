@@ -168,6 +168,64 @@ def fix_process_names(process_dicts: list):
         return process_dicts
 
 
+def _as_sorted_values(values) -> list:
+    """Unique values as sorted ints (or strings, if any isn't an integer)."""
+    unique = {str(v) for v in values if str(v) != ""}
+    if all(v.lstrip("-").isdigit() for v in unique):
+        return sorted(int(v) for v in unique)
+    return sorted(unique)
+
+
+def check_shank_groups(postprocessed_results_folder: Path, phy_results_folder: Path) -> dict:
+    """End-of-run check that each recording names the same shank everywhere.
+
+    Compares, per recording: the _group<N> in its name, the analyzer's per-channel
+    "group" property, the probe's shank_ids (both from the analyzer's recording_info),
+    and phy's channel_groups.npy and cluster_channel_group.tsv. Logs a warning for any
+    recording where they disagree. Returns {recording_name: {"ok": bool, <source>: values}}.
+    """
+    report = {}
+    for analyzer_folder in sorted(postprocessed_results_folder.glob("*.zarr")):
+        recording_name = analyzer_folder.name[: -len(".zarr")]
+        sources = {}
+        name_groups = re.findall(r"_group(\d+)", recording_name)
+        if name_groups:
+            sources["recording name"] = [int(name_groups[-1])]
+        try:
+            info = zarr.open_group(str(analyzer_folder), mode="r")["recording_info"].attrs.asdict()
+            groups = (info.get("recording_attributes") or {}).get("properties", {}).get("group")
+            if groups is not None:
+                sources["analyzer group property"] = _as_sorted_values(groups)
+            shank_ids = [
+                s
+                for probe in (info.get("probegroup") or {}).get("probes", [])
+                for s in (probe.get("shank_ids") or [])
+            ]
+            if _as_sorted_values(shank_ids):
+                sources["probe shank_ids"] = _as_sorted_values(shank_ids)
+        except Exception as e:
+            logging.info(f"\t{recording_name}: could not read the analyzer's recording info ({e})")
+        phy_folder = phy_results_folder / recording_name
+        if (phy_folder / "channel_groups.npy").is_file():
+            sources["phy channel_groups.npy"] = _as_sorted_values(
+                np.load(phy_folder / "channel_groups.npy").ravel()
+            )
+        if (phy_folder / "cluster_channel_group.tsv").is_file():
+            table = pd.read_csv(phy_folder / "cluster_channel_group.tsv", sep="\t")
+            column = "channel_group" if "channel_group" in table else table.columns[-1]
+            sources["phy cluster_channel_group.tsv"] = _as_sorted_values(table[column])
+
+        ok = len(sources) >= 2 and len({json.dumps(v) for v in sources.values()}) == 1
+        report[recording_name] = {"ok": ok, **sources}
+        summary = "; ".join(f"{source} {values}" for source, values in sources.items())
+        if ok:
+            logging.info(f"\t{recording_name}: shank groups agree ({summary})")
+        elif len(sources) < 2:
+            logging.info(f"\t{recording_name}: too few shank sources to compare ({summary})")
+        else:
+            logging.warning(f"\t{recording_name}: SHANK GROUPS DISAGREE: {summary}")
+    return report
+
 
 if __name__ == "__main__":
     ###### COLLECT RESULTS #########
@@ -529,6 +587,19 @@ if __name__ == "__main__":
             phy_output_folder = results_folder / "phy" / recording_name
             phy_output_folder.mkdir(parents=True, exist_ok=True)
             shutil.copytree(phy_input_folder, phy_output_folder, dirs_exist_ok=True)
+
+    # SHANK GROUPS: the recording name, analyzer group property, probe shank IDs and
+    # phy channel groups should all name the same shank
+    logging.info("Checking shank groups")
+    shank_group_report = check_shank_groups(postprocessed_results_folder, results_folder / "phy")
+    (results_folder / "shank_group_check.json").write_text(
+        json.dumps(shank_group_report, indent=2)
+    )
+    n_disagree = sum(not r["ok"] and len(r) > 2 for r in shank_group_report.values())
+    if n_disagree:
+        logging.warning(
+            f"Shank groups disagree for {n_disagree} recording(s): see shank_group_check.json"
+        )
 
     # PROCESSING
     logging.info("Generating processing metadata")
